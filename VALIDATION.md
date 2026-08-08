@@ -1,5 +1,21 @@
 # Kết quả kiểm tra bản mã nguồn
 
+## Bổ sung ngày 2026-08-09 - validation cuối
+
+- `python microbit/tests/test_protocol.py`: PASS.
+- `python iot-gateway/tests/test_switch_protocol.py`: PASS.
+- `python -m compileall -q iot-gateway microbit`: PASS.
+- Kiểm tra cú pháp 22 file JavaScript Backend/simulator: PASS.
+- Frontend TypeScript + Vite production build: PASS (`2217 modules transformed`).
+- Build có cảnh báo bundle JavaScript khoảng 738 kB lớn hơn ngưỡng khuyến nghị 500 kB; đây là cảnh báo tối ưu hiệu năng, không làm build thất bại.
+- Backend memory smoke test: PASS, gồm 8 tài khoản, tạo tài khoản/thiết bị, đổi mật khẩu, nhắn tin, xóa hội thoại, dữ liệu vai trò và AI mock có nguồn.
+- MQTT local integration: PASS cho luồng cảm biến → Mosquitto → Backend → lệnh thiết bị → trạng thái phản hồi.
+- SQL Server 2022 integration: PASS; schema/seed thành công, backend ghi reading, khởi động lại và đọc lại đúng dữ liệu đã lưu.
+- `frontend/package-lock.json` đã được đồng bộ lại với `package.json`; `npm install --package-lock-only` PASS.
+- Có suite chạy lại tại `scripts/validate-software-wsl.sh` và checklist nghiệm thu tại `docs/ACCEPTANCE-CHECKLIST.md`.
+
+Các kết quả trên là bằng chứng phần mềm/mô phỏng. Adafruit IO và Micro:bit/relay thật vẫn chưa được đánh dấu PASS vì môi trường không có AIO credentials và phần cứng của nhóm; không tạo ảnh/video giả thay thế.
+
 ## Bổ sung ngày 2026-08-09
 
 - Frontend mở rộng lần 2: PASS (`2217 modules transformed`) với trang Tin nhắn & AI, Báo cáo, Trợ giúp và 16 thiết bị trong lịch công việc/bảo trì.
