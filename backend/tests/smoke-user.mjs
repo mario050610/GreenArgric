@@ -69,6 +69,7 @@ const aiResponse = await fetch(`${baseUrl}/ai/chat`, { method: 'POST', headers, 
 const aiResult = await aiResponse.json();
 if (!aiResponse.ok || aiResult.provider !== 'ollama' || !aiResult.reply.includes('Phản hồi Ollama kiểm thử') || !aiResult.reply.includes('Tham khảo thêm tại link:')) throw new Error(`Ollama chat failed: ${aiResponse.status} ${JSON.stringify(aiResult)}`);
 if (aiResult.reply.includes('**') || /^\s*\*/m.test(aiResult.reply)) throw new Error(`Markdown cleanup failed: ${JSON.stringify(aiResult)}`);
+if (/[\u3400-\u9FFF]/u.test(aiResult.reply)) throw new Error(`Foreign script cleanup failed: ${JSON.stringify(aiResult)}`);
 const cookingResponse = await fetch(`${baseUrl}/ai/chat`, { method: 'POST', headers, body: JSON.stringify({ message: 'Cách nấu rau muống ngon?' }) });
 const cookingResult = await cookingResponse.json();
 if (!cookingResponse.ok || cookingResult.reply.includes('wikipedia.org') || !cookingResult.reply.includes('site%3Adienmayxanh.com%2Fvao-bep')) throw new Error(`Cooking reference failed: ${cookingResponse.status} ${JSON.stringify(cookingResult)}`);

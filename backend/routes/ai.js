@@ -23,7 +23,9 @@ async function findReferenceLink(question) {
   return `https://www.google.com/search?q=${encodeURIComponent(searchQuery)}`;
 }
 
-const containsCjkCharacters = (value) => /[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]/u.test(String(value || ''));
+const foreignScriptPattern = /[\u0370-\u052F\u0590-\u0E7F\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uAC00-\uD7AF\uF900-\uFAFF]/u;
+const foreignScriptGlobalPattern = /[\u0370-\u052F\u0590-\u0E7F\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uAC00-\uD7AF\uF900-\uFAFF]/gu;
+const containsForeignScript = (value) => foreignScriptPattern.test(String(value || ''));
 
 async function requestOllama(messages) {
   const call = async (requestMessages) => {
@@ -32,8 +34,13 @@ async function requestOllama(messages) {
     return { response, result };
   };
   let output = await call(messages);
-  if (output.response.ok && containsCjkCharacters(output.result.message?.content)) {
-    output = await call([...messages, { role: 'assistant', content: output.result.message.content }, { role: 'user', content: 'Hãy viết lại toàn bộ câu trả lời bằng tiếng Việt tự nhiên, chỉ dùng chữ Quốc ngữ; loại bỏ mọi chữ Hán, chữ Trung Quốc và từ bị lỗi mã hóa.' }]);
+  if (output.response.ok) {
+    const draft = output.result.message?.content || '';
+    const edited = await call([...messages, { role: 'assistant', content: draft }, { role: 'user', content: 'Hãy biên tập lại câu trả lời trên: chỉ dùng tiếng Việt tự nhiên và đúng chính tả; không dùng từ nước ngoài, chữ Hán, chữ Trung Quốc hay ký tự lỗi; không dùng Markdown; mỗi ý phải là một gạch đầu dòng riêng và có dòng trống ngăn cách. Chỉ trả về câu trả lời đã biên tập.' }]);
+    if (edited.response.ok && edited.result.message?.content) output = edited;
+    if (containsForeignScript(output.result.message?.content)) {
+      output.result.message.content = String(output.result.message.content).replace(foreignScriptGlobalPattern, '').replace(/[ \t]{2,}/g, ' ');
+    }
   }
   return output;
 }
@@ -42,6 +49,7 @@ const formatPlainAnswer = (answer) => String(answer || '')
   .replace(/\*\*(.*?)\*\*/g, '$1')
   .replace(/^\s*\*\s+/gm, '- ')
   .replace(/^\s*#{1,6}\s+/gm, '')
+  .replace(/\n(?=(?:- |\d+[.)]\s))/g, '\n\n')
   .replace(/\n{3,}/g, '\n\n')
   .trim();
 

@@ -4495,7 +4495,7 @@ function LogoScreen() {
 }
 
 function MessageText({ text }: { text: string }) {
-  return <div className="whitespace-pre-wrap leading-relaxed">{String(text).split(/(https?:\/\/[^\s]+)/g).map((part, index) => /^https?:\/\//.test(part) ? <a key={index} href={part} target="_blank" rel="noreferrer" className="underline font-semibold break-all">{part}</a> : <span key={index}>{part}</span>)}</div>;
+  return <div className="whitespace-pre-wrap leading-relaxed">{String(text).split(/(https?:\/\/[^\s]+)/g).map((part, index) => /^https?:\/\//.test(part) ? <a key={index} href={part} target="_blank" rel="noreferrer" className="inline-block underline font-semibold">Mở bài viết tham khảo</a> : <span key={index}>{part}</span>)}</div>;
 }
 
 function MessagesScreen() {
