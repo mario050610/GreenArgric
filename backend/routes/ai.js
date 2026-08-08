@@ -15,9 +15,28 @@ async function findReferenceLink(question) {
     const response = await fetch(url, { signal: AbortSignal.timeout(2500) });
     const result = await response.json();
     const title = result.query?.search?.[0]?.title;
-    if (title) return `https://vi.wikipedia.org/wiki/${encodeURIComponent(title.replace(/ /g, '_'))}`;
+    const normalizedTitle = normalizeVietnamese(title);
+    const meaningfulWords = normalized.split(/\s+/).filter((word) => word.length > 2 && !['cach', 'mon', 'ngon', 'nhung', 'voi', 'the', 'nao'].includes(word));
+    const relevant = meaningfulWords.some((word) => normalizedTitle.includes(word));
+    const misleadingRauCau = normalized.includes('rau') && !normalized.includes('rau cau') && normalizedTitle.includes('rau cau');
+    if (title && relevant && !misleadingRauCau) return `https://vi.wikipedia.org/wiki/${encodeURIComponent(title.replace(/ /g, '_'))}`;
   } catch { /* Dùng liên kết tìm kiếm an toàn khi nguồn bài viết không phản hồi. */ }
   return `https://www.google.com/search?q=${encodeURIComponent(question)}`;
+}
+
+const containsCjkCharacters = (value) => /[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]/u.test(String(value || ''));
+
+async function requestOllama(messages) {
+  const call = async (requestMessages) => {
+    const response = await fetch(`${config.ai.ollamaUrl}/api/chat`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: config.ai.ollamaModel, messages: requestMessages, stream: false }) });
+    const result = await response.json();
+    return { response, result };
+  };
+  let output = await call(messages);
+  if (output.response.ok && containsCjkCharacters(output.result.message?.content)) {
+    output = await call([...messages, { role: 'assistant', content: output.result.message.content }, { role: 'user', content: 'Hãy viết lại toàn bộ câu trả lời bằng tiếng Việt tự nhiên, chỉ dùng chữ Quốc ngữ; loại bỏ mọi chữ Hán, chữ Trung Quốc và từ bị lỗi mã hóa.' }]);
+  }
+  return output;
 }
 
 const appendReference = (answer, link) => `${String(answer || '').trim()}\n\nTham khảo thêm tại link: ${link}`;
@@ -63,12 +82,11 @@ router.post('/chat', async (req, res) => {
     devices: store.devices.map((device) => ({ name: device.device_name, status: device.status, mode: device.mode })),
     tasks: store.tasks.map((task) => ({ title: task.title, type: task.task_type, status: task.status, assignedTo: task.assigned_to })),
   };
-  const system = `Bạn là trợ lý thông minh đa năng GREEN ARGRIC. Bạn có thể trả lời toàn diện các câu hỏi thông thường như học tập, công nghệ, viết nội dung, giải thích khái niệm, lập kế hoạch và kiến thức phổ thông; không giới hạn câu trả lời vào cây trồng hay nông nghiệp. Khi người dùng hỏi về GREEN ARGRIC, hãy ưu tiên dữ liệu hệ thống được cung cấp bên dưới. Phân biệt rõ dữ liệu hệ thống với kiến thức chung, không bịa dữ liệu nội bộ chưa có. Không tiết lộ mật khẩu, token, khóa bí mật hoặc hướng dẫn nguy hiểm. Trả lời tự nhiên bằng tiếng Việt trừ khi người dùng yêu cầu ngôn ngữ khác. Khi câu trả lời có nhiều ý, bắt buộc tách mỗi ý xuống một dòng và dùng dấu gạch đầu dòng; không viết thành một đoạn dài, không tự tạo URL. Backend sẽ tự thêm nguồn tham khảo. Dữ liệu GREEN ARGRIC hiện tại: ${JSON.stringify(systemContext)}`;
+  const system = `Bạn là trợ lý thông minh đa năng GREEN ARGRIC. Bạn có thể trả lời toàn diện các câu hỏi thông thường như học tập, công nghệ, viết nội dung, giải thích khái niệm, lập kế hoạch và kiến thức phổ thông; không giới hạn câu trả lời vào cây trồng hay nông nghiệp. Khi người dùng hỏi về GREEN ARGRIC, hãy ưu tiên dữ liệu hệ thống được cung cấp bên dưới. Phân biệt rõ dữ liệu hệ thống với kiến thức chung, không bịa dữ liệu nội bộ chưa có. Không tiết lộ mật khẩu, token, khóa bí mật hoặc hướng dẫn nguy hiểm. Trả lời tự nhiên bằng tiếng Việt trừ khi người dùng yêu cầu ngôn ngữ khác. Nếu trả lời tiếng Việt, chỉ dùng chữ Quốc ngữ và thuật ngữ phổ biến; tuyệt đối không chèn chữ Hán, chữ Trung Quốc hoặc ký tự bị lỗi mã hóa. Khi câu trả lời có nhiều ý, bắt buộc tách mỗi ý xuống một dòng và dùng dấu gạch đầu dòng; không viết thành một đoạn dài, không tự tạo URL. Backend sẽ tự thêm nguồn tham khảo. Dữ liệu GREEN ARGRIC hiện tại: ${JSON.stringify(systemContext)}`;
   const messages = [{ role: 'system', content: system }, ...history.map((item) => ({ role: item.role === 'assistant' ? 'assistant' : 'user', content: String(item.content || '') })), { role: 'user', content: message }];
   try {
     if (config.ai.provider === 'ollama') {
-      const response = await fetch(`${config.ai.ollamaUrl}/api/chat`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: config.ai.ollamaModel, messages, stream: false }) });
-      const result = await response.json();
+      const { response, result } = await requestOllama(messages);
       if (!response.ok) return res.status(502).json({ message: result.error || 'Ollama không phản hồi', code: 'OLLAMA_ERROR' });
       const reply = result.message?.content || 'AI chưa tạo được nội dung trả lời.';
       return res.json({ reply: appendReference(reply, await findReferenceLink(message)), model: config.ai.ollamaModel, provider: 'ollama' });
