@@ -24,6 +24,17 @@ router.get('/conversation/:userId', (req, res) => {
   res.json(rows.sort((a, b) => new Date(a.created_at) - new Date(b.created_at)));
 });
 
+router.delete('/conversation/:userId', (req, res) => {
+  const otherId = Number(req.params.userId);
+  if (!store.users.some((user) => user.user_id === otherId)) return res.status(404).json({ message: 'Không tìm thấy người nhận' });
+  const before = store.messages.length;
+  store.messages = store.messages.filter((message) => !(
+    (message.sender_id === req.user.id && message.receiver_id === otherId) ||
+    (message.sender_id === otherId && message.receiver_id === req.user.id)
+  ));
+  return res.json({ message: 'Đã xóa cuộc trò chuyện', deleted: before - store.messages.length });
+});
+
 router.post('/', (req, res) => {
   const receiverId = Number(req.body.receiver_id);
   const content = String(req.body.content || '').trim();
