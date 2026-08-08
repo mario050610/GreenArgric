@@ -68,6 +68,10 @@ if (!ownerMessages.some((message) => message.content === 'Tin nhắn smoke test 
 const aiResponse = await fetch(`${baseUrl}/ai/chat`, { method: 'POST', headers, body: JSON.stringify({ message: 'Tình trạng vườn?' }) });
 const aiResult = await aiResponse.json();
 if (!aiResponse.ok || aiResult.provider !== 'ollama' || !aiResult.reply.includes('Phản hồi Ollama kiểm thử') || !aiResult.reply.includes('Tham khảo thêm tại link:')) throw new Error(`Ollama chat failed: ${aiResponse.status} ${JSON.stringify(aiResult)}`);
+if (aiResult.reply.includes('**') || /^\s*\*/m.test(aiResult.reply)) throw new Error(`Markdown cleanup failed: ${JSON.stringify(aiResult)}`);
+const cookingResponse = await fetch(`${baseUrl}/ai/chat`, { method: 'POST', headers, body: JSON.stringify({ message: 'Cách nấu rau muống ngon?' }) });
+const cookingResult = await cookingResponse.json();
+if (!cookingResponse.ok || cookingResult.reply.includes('wikipedia.org') || !cookingResult.reply.includes('site%3Adienmayxanh.com%2Fvao-bep')) throw new Error(`Cooking reference failed: ${cookingResponse.status} ${JSON.stringify(cookingResult)}`);
 const groundedAdminResponse = await fetch(`${baseUrl}/ai/chat`, { method: 'POST', headers: ownerHeaders, body: JSON.stringify({ message: 'Quản trị viên tên gì?' }) });
 const groundedAdmin = await groundedAdminResponse.json();
 if (!groundedAdminResponse.ok || groundedAdmin.provider !== 'system' || !groundedAdmin.reply.includes('Phạm Phước Nguyên') || groundedAdmin.reply.includes('Huỳnh Minh Quân')) throw new Error(`Grounded role answer failed: ${groundedAdminResponse.status} ${JSON.stringify(groundedAdmin)}`);

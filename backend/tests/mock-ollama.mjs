@@ -13,6 +13,6 @@ http.createServer((req, res) => {
       res.end(JSON.stringify({ error: 'Missing general assistant prompt or system users context' }));
       return;
     }
-    res.end(JSON.stringify({ model: payload.model, message: { role: 'assistant', content: 'Phản hồi Ollama kiểm thử' }, done: true }));
+    res.end(JSON.stringify({ model: payload.model, message: { role: 'assistant', content: '* **Phản hồi Ollama kiểm thử**' }, done: true }));
   });
 }).listen(11435, '127.0.0.1');

@@ -9,10 +9,13 @@ const normalizeVietnamese = (value) => String(value || '').normalize('NFD').repl
 async function findReferenceLink(question) {
   const normalized = normalizeVietnamese(question);
   if (/green argric|quan tri|chu vuon|ky thuat|thiet bi|khu vuc/.test(normalized)) return 'https://github.com/mario050610/GreenArgric';
-  // Không tự chọn kết quả Wikipedia đầu tiên vì từ ngắn như "rau" có thể bị
-  // ghép nhầm thành một chủ đề khác như "rau câu". Link tìm kiếm giữ nguyên
-  // ý định của người dùng và để họ chọn bài viết phù hợp từ kết quả mới nhất.
-  return `https://www.google.com/search?q=${encodeURIComponent(`bài viết hướng dẫn ${question}`)}`;
+  let searchQuery = `bài viết hướng dẫn ${question} -site:wikipedia.org`;
+  if (/nau|mon an|cong thuc|xao|luoc|chien|hap|am thuc|rau/.test(normalized)) {
+    searchQuery = `site:dienmayxanh.com/vao-bep ${question}`;
+  } else if (/suc khoe|benh|dinh duong|thuoc|trieu chung/.test(normalized)) {
+    searchQuery = `site:vinmec.com ${question}`;
+  }
+  return `https://www.google.com/search?q=${encodeURIComponent(searchQuery)}`;
 }
 
 const containsCjkCharacters = (value) => /[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]/u.test(String(value || ''));
@@ -30,7 +33,14 @@ async function requestOllama(messages) {
   return output;
 }
 
-const appendReference = (answer, link) => `${String(answer || '').trim()}\n\nTham khảo thêm tại link: ${link}`;
+const formatPlainAnswer = (answer) => String(answer || '')
+  .replace(/\*\*(.*?)\*\*/g, '$1')
+  .replace(/^\s*\*\s+/gm, '- ')
+  .replace(/^\s*#{1,6}\s+/gm, '')
+  .replace(/\n{3,}/g, '\n\n')
+  .trim();
+
+const appendReference = (answer, link) => `${formatPlainAnswer(answer)}\n\nTham khảo thêm tại link: ${link}`;
 
 function answerDirectoryQuestion(question) {
   const normalized = normalizeVietnamese(question);
@@ -73,7 +83,7 @@ router.post('/chat', async (req, res) => {
     devices: store.devices.map((device) => ({ name: device.device_name, status: device.status, mode: device.mode })),
     tasks: store.tasks.map((task) => ({ title: task.title, type: task.task_type, status: task.status, assignedTo: task.assigned_to })),
   };
-  const system = `Bạn là trợ lý thông minh đa năng GREEN ARGRIC. Bạn có thể trả lời toàn diện các câu hỏi thông thường như học tập, công nghệ, viết nội dung, giải thích khái niệm, lập kế hoạch và kiến thức phổ thông; không giới hạn câu trả lời vào cây trồng hay nông nghiệp. Khi người dùng hỏi về GREEN ARGRIC, hãy ưu tiên dữ liệu hệ thống được cung cấp bên dưới. Phân biệt rõ dữ liệu hệ thống với kiến thức chung, không bịa dữ liệu nội bộ chưa có. Không tiết lộ mật khẩu, token, khóa bí mật hoặc hướng dẫn nguy hiểm. Trả lời tự nhiên bằng tiếng Việt trừ khi người dùng yêu cầu ngôn ngữ khác. Nếu trả lời tiếng Việt, chỉ dùng chữ Quốc ngữ và thuật ngữ phổ biến; tuyệt đối không chèn chữ Hán, chữ Trung Quốc hoặc ký tự bị lỗi mã hóa. Khi câu trả lời có nhiều ý, bắt buộc tách mỗi ý xuống một dòng và dùng dấu gạch đầu dòng; không viết thành một đoạn dài, không tự tạo URL. Backend sẽ tự thêm nguồn tham khảo. Dữ liệu GREEN ARGRIC hiện tại: ${JSON.stringify(systemContext)}`;
+  const system = `Bạn là trợ lý thông minh đa năng GREEN ARGRIC. Bạn có thể trả lời toàn diện các câu hỏi thông thường như học tập, công nghệ, viết nội dung, giải thích khái niệm, lập kế hoạch và kiến thức phổ thông; không giới hạn câu trả lời vào cây trồng hay nông nghiệp. Khi người dùng hỏi về GREEN ARGRIC, hãy ưu tiên dữ liệu hệ thống được cung cấp bên dưới. Phân biệt rõ dữ liệu hệ thống với kiến thức chung, không bịa dữ liệu nội bộ chưa có. Không tiết lộ mật khẩu, token, khóa bí mật hoặc hướng dẫn nguy hiểm. Trả lời tự nhiên bằng tiếng Việt trừ khi người dùng yêu cầu ngôn ngữ khác. Nếu trả lời tiếng Việt, chỉ dùng chữ Quốc ngữ và thuật ngữ phổ biến; tuyệt đối không chèn chữ Hán, chữ Trung Quốc hoặc ký tự bị lỗi mã hóa. Trình bày bằng văn bản thuần, không dùng Markdown, không dùng dấu **, # hoặc bảng. Khi câu trả lời có nhiều ý, tách mỗi ý xuống một dòng và dùng dấu gạch đầu dòng đơn; không viết thành một đoạn dài, không tự tạo URL. Backend sẽ tự thêm nguồn tham khảo. Dữ liệu GREEN ARGRIC hiện tại: ${JSON.stringify(systemContext)}`;
   const messages = [{ role: 'system', content: system }, ...history.map((item) => ({ role: item.role === 'assistant' ? 'assistant' : 'user', content: String(item.content || '') })), { role: 'user', content: message }];
   try {
     if (config.ai.provider === 'ollama') {
