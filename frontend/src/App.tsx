@@ -8,6 +8,7 @@ import { DashboardPage } from './pages/DashboardPage';
 import { DevicesPage } from './pages/DevicesPage';
 import { EnvironmentPage } from './pages/EnvironmentPage';
 import { HistoryPage } from './pages/HistoryPage';
+import { IntegrationPage } from './pages/IntegrationPage';
 import { LoginPage } from './pages/LoginPage';
 import { TasksPage } from './pages/TasksPage';
 import { ThresholdsPage } from './pages/ThresholdsPage';
@@ -34,6 +35,14 @@ export default function App() {
         />
         <Route path="devices" element={<DevicesPage />} />
         <Route path="alerts" element={<AlertsPage />} />
+        <Route
+          path="integration"
+          element={
+            <RoleRoute roles={['admin', 'owner', 'technician']}>
+              <IntegrationPage />
+            </RoleRoute>
+          }
+        />
         <Route
           path="history"
           element={

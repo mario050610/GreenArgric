@@ -111,3 +111,9 @@ class AdafruitBridge:
             return self.commands.get_nowait()
         except queue.Empty:
             return None
+
+    def disconnect(self) -> None:
+        if not self.connected:
+            return
+        self.client.disconnect()
+        self.connected = False

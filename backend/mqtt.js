@@ -3,6 +3,7 @@ import mqtt from 'mqtt';
 import { config } from './config.js';
 import { store, nextId } from './data/store.js';
 import { evaluateReading } from './core/automation.js';
+import { persistReading, updatePersistedDevice } from './db.js';
 
 let client;
 const state = {
@@ -92,10 +93,11 @@ async function saveSensorReading(sensor, parsed) {
     quality_flag: payload.quality || 'good',
   };
   store.readings.push(reading);
+  await persistReading(reading);
   await evaluateReading(reading, sensor);
 }
 
-function updateDeviceStatus(deviceKey, parsed) {
+async function updateDeviceStatus(deviceKey, parsed) {
   const status = normalizeSwitchState(parsed);
   if (!deviceKey || !status) return;
 
@@ -107,6 +109,7 @@ function updateDeviceStatus(deviceKey, parsed) {
   const payload = parsed && typeof parsed === 'object' ? parsed : {};
   device.status = status;
   device.last_seen = payload.timestamp || new Date().toISOString();
+  await updatePersistedDevice(device);
 
   const requestId = payload.request_id || null;
   let command = requestId
@@ -135,7 +138,7 @@ async function handleAdafruitMessage(topic, buffer) {
 
   const statusDeviceKey = deviceKeyByFeed(config.mqtt.adafruit.deviceStatusFeeds, feedKey);
   if (statusDeviceKey) {
-    updateDeviceStatus(statusDeviceKey, parsed);
+    await updateDeviceStatus(statusDeviceKey, parsed);
     return;
   }
 

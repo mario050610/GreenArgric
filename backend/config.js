@@ -15,6 +15,15 @@ export const config = {
   jwtSecret: process.env.JWT_SECRET || 'green_argric_dev_secret_change_me',
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '8h',
   dataMode: process.env.DATA_MODE || 'memory',
+  openai: {
+    apiKey: process.env.OPENAI_API_KEY || '',
+    model: process.env.OPENAI_MODEL || 'gpt-5.6-sol',
+  },
+  ai: {
+    provider: String(process.env.AI_PROVIDER || 'ollama').toLowerCase(),
+    ollamaUrl: String(process.env.OLLAMA_URL || 'http://127.0.0.1:11434').replace(/\/$/, ''),
+    ollamaModel: process.env.OLLAMA_MODEL || 'qwen2.5:3b',
+  },
   db: {
     server: process.env.DB_SERVER || '127.0.0.1',
     port: Number(process.env.DB_PORT || 1433),

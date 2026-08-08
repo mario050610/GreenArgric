@@ -2,9 +2,14 @@ USE GreenArgric;
 GO
 INSERT INTO Role(role_name,description) VALUES ('admin',N'Quản trị viên'),('owner',N'Chủ vườn'),('technician',N'Kỹ thuật viên');
 INSERT INTO [User](role_id,full_name,email,password_hash,status) VALUES
-(1,N'Nguyễn Văn An','admin@greenargric.edu.vn','plain:demo123','active'),
-(2,N'Trần Minh Khoa','owner@greenargric.edu.vn','plain:demo123','active'),
-(3,N'Lê Thu Hà','tech@greenargric.edu.vn','plain:demo123','active');
+(1,N'Phạm Phước Nguyên','admin@greenargric.edu.vn','plain:greenargric2026','active'),
+(2,N'Huỳnh Minh Quân','owner@greenargric.edu.vn','plain:greenargric2026','active'),
+(3,N'Trần Huỳnh Đăng Khoa','tech@greenargric.edu.vn','plain:greenargric2026','active'),
+(2,N'Nguyễn Thúy Ái','ai.nta@greenargric.edu.vn','plain:greenargric2026','active'),
+(3,N'Phạm Đình Duy Thái','thai.pdd@greenargric.edu.vn','plain:greenargric2026','locked'),
+(3,N'Nguyễn Thanh Tâm','tam.nt@greenargric.edu.vn','plain:greenargric2026','active'),
+(2,N'Trần Thị Nhi','nhi.tt@greenargric.edu.vn','plain:greenargric2026','active'),
+(3,N'Nguyễn Văn Đức','duc.nv@greenargric.edu.vn','plain:greenargric2026','active');
 INSERT INTO HydroponicArea(area_name,location,crop_type,description,status) VALUES
 (N'Khu A',N'Nhà màng phía Đông',N'Rau muống',N'Khu trồng rau ăn lá','active'),
 (N'Khu B',N'Nhà màng trung tâm',N'Xà lách xanh',N'Khu trồng xà lách','active');

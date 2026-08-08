@@ -21,7 +21,11 @@ class SensorManager:
         temp_value = None
         humidity_value = None
         if self.dht20:
-            temp_value, humidity_value = self.dht20.read()
+            try:
+                temp_value, humidity_value = self.dht20.read()
+            except (OSError, ValueError):
+                temp_value = None
+                humidity_value = None
 
         # Fallback giúp demo được ngay cả khi chưa gắn DHT20.
         if temp_value is None:
