@@ -75,4 +75,9 @@ if (!cookingResponse.ok || cookingResult.reply.includes('wikipedia.org') || !coo
 const groundedAdminResponse = await fetch(`${baseUrl}/ai/chat`, { method: 'POST', headers: ownerHeaders, body: JSON.stringify({ message: 'Quản trị viên tên gì?' }) });
 const groundedAdmin = await groundedAdminResponse.json();
 if (!groundedAdminResponse.ok || groundedAdmin.provider !== 'system' || !groundedAdmin.reply.includes('Phạm Phước Nguyên') || groundedAdmin.reply.includes('Huỳnh Minh Quân')) throw new Error(`Grounded role answer failed: ${groundedAdminResponse.status} ${JSON.stringify(groundedAdmin)}`);
-console.log('users(8), device/password, Owner-Admin-Tech messaging, grounded roles and Ollama chat smoke test: PASS');
+const deleteConversation = await fetch(`${baseUrl}/message/conversation/2`, { method: 'DELETE', headers });
+const deletedConversation = await deleteConversation.json();
+if (!deleteConversation.ok || deletedConversation.deleted < 1) throw new Error(`Delete conversation failed: ${deleteConversation.status} ${JSON.stringify(deletedConversation)}`);
+const emptyConversation = await fetch(`${baseUrl}/message/conversation/2`, { headers });
+if (!emptyConversation.ok || (await emptyConversation.json()).length !== 0) throw new Error('Conversation was not deleted');
+console.log('users(8), device/password, messaging/delete conversation, grounded roles and Ollama chat smoke test: PASS');

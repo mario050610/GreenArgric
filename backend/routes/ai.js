@@ -9,6 +9,11 @@ const normalizeVietnamese = (value) => String(value || '').normalize('NFD').repl
 async function findReferenceLink(question) {
   const normalized = normalizeVietnamese(question);
   if (/green argric|quan tri|chu vuon|ky thuat|thiet bi|khu vuc/.test(normalized)) return 'https://github.com/mario050610/GreenArgric';
+  if (normalized.includes('rau muong')) {
+    if (normalized.includes('luoc')) return 'https://www.dienmayxanh.com/vao-bep/cach-luoc-rau-muong-xanh-muot-gion-ngon-khong-bi-tham-den-cuc-10244';
+    if (normalized.includes('xao tom')) return 'https://www.dienmayxanh.com/vao-bep/cach-lam-rau-muong-xao-tom-tuoi-gion-ngon-doi-vi-cho-bua-com-11892';
+    return 'https://www.dienmayxanh.com/vao-bep/cach-xao-rau-muong-giu-duoc-mau-xanh-00657';
+  }
   let searchQuery = `bài viết hướng dẫn ${question} -site:wikipedia.org`;
   if (/nau|mon an|cong thuc|xao|luoc|chien|hap|am thuc|rau/.test(normalized)) {
     searchQuery = `site:dienmayxanh.com/vao-bep ${question}`;
