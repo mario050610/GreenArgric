@@ -4,10 +4,34 @@ import { store } from '../data/store.js';
 
 const router = Router();
 
+const normalizeVietnamese = (value) => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase();
+
+function answerDirectoryQuestion(question) {
+  const normalized = normalizeVietnamese(question);
+  const asksIdentity = /(ten gi|la ai|thong tin|danh sach|co nhung ai|bao nhieu)/.test(normalized);
+  if (!asksIdentity) return null;
+  const requestedRole = normalized.includes('quan tri') || normalized.includes('admin')
+    ? 'admin'
+    : normalized.includes('chu vuon') || normalized.includes('owner')
+      ? 'owner'
+      : normalized.includes('ky thuat') || normalized.includes('technician') || normalized.includes('ktv')
+        ? 'technician'
+        : null;
+  if (!requestedRole) return null;
+  const role = store.roles.find((item) => item.role_name === requestedRole);
+  const users = store.users.filter((user) => user.role_id === role?.role_id).map((user) => ({ name: user.full_name, email: user.email, status: user.status }));
+  const roleLabel = requestedRole === 'admin' ? 'Quản trị viên' : requestedRole === 'owner' ? 'Chủ vườn' : 'Kỹ thuật viên';
+  if (!users.length) return `Hiện hệ thống chưa có tài khoản ${roleLabel}.`;
+  if (users.length === 1) return `${roleLabel} là ${users[0].name} (${users[0].email}), trạng thái ${users[0].status === 'active' ? 'đang hoạt động' : users[0].status}.`;
+  return `Hệ thống có ${users.length} ${roleLabel.toLowerCase()}: ${users.map((user) => `${user.name} (${user.email}, ${user.status === 'active' ? 'đang hoạt động' : user.status})`).join('; ')}.`;
+}
+
 router.post('/chat', async (req, res) => {
   const message = String(req.body.message || '').trim();
   const history = Array.isArray(req.body.history) ? req.body.history.slice(-10) : [];
   if (!message) return res.status(400).json({ message: 'Nội dung câu hỏi là bắt buộc' });
+  const directoryAnswer = answerDirectoryQuestion(message);
+  if (directoryAnswer) return res.json({ reply: directoryAnswer, provider: 'system', source: 'users' });
   const systemContext = {
     currentUser: { id: req.user.id, name: req.user.name, role: req.user.role },
     users: store.users.map((user) => ({

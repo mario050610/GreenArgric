@@ -68,4 +68,7 @@ if (!ownerMessages.some((message) => message.content === 'Tin nhắn smoke test 
 const aiResponse = await fetch(`${baseUrl}/ai/chat`, { method: 'POST', headers, body: JSON.stringify({ message: 'Tình trạng vườn?' }) });
 const aiResult = await aiResponse.json();
 if (!aiResponse.ok || aiResult.provider !== 'ollama' || aiResult.reply !== 'Phản hồi Ollama kiểm thử') throw new Error(`Ollama chat failed: ${aiResponse.status} ${JSON.stringify(aiResult)}`);
-console.log('users(8), device/password, Owner-Admin-Tech round-trip messaging and Ollama chat smoke test: PASS');
+const groundedAdminResponse = await fetch(`${baseUrl}/ai/chat`, { method: 'POST', headers: ownerHeaders, body: JSON.stringify({ message: 'Quản trị viên tên gì?' }) });
+const groundedAdmin = await groundedAdminResponse.json();
+if (!groundedAdminResponse.ok || groundedAdmin.provider !== 'system' || !groundedAdmin.reply.includes('Phạm Phước Nguyên') || groundedAdmin.reply.includes('Huỳnh Minh Quân')) throw new Error(`Grounded role answer failed: ${groundedAdminResponse.status} ${JSON.stringify(groundedAdmin)}`);
+console.log('users(8), device/password, Owner-Admin-Tech messaging, grounded roles and Ollama chat smoke test: PASS');
