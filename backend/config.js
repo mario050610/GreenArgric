@@ -22,7 +22,7 @@ export const config = {
   ai: {
     provider: String(process.env.AI_PROVIDER || 'ollama').toLowerCase(),
     ollamaUrl: String(process.env.OLLAMA_URL || 'http://127.0.0.1:11434').replace(/\/$/, ''),
-    ollamaModel: process.env.OLLAMA_MODEL || 'qwen2.5:3b',
+    ollamaModel: process.env.OLLAMA_MODEL || 'gemma3:4b',
   },
   db: {
     server: process.env.DB_SERVER || '127.0.0.1',

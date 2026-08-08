@@ -9,26 +9,17 @@ const normalizeVietnamese = (value) => String(value || '').normalize('NFD').repl
 async function findReferenceLink(question) {
   const normalized = normalizeVietnamese(question);
   if (/green argric|quan tri|chu vuon|ky thuat|thiet bi|khu vuc/.test(normalized)) return 'https://github.com/mario050610/GreenArgric';
-  try {
-    const url = new URL('https://vi.wikipedia.org/w/api.php');
-    url.search = new URLSearchParams({ action: 'query', list: 'search', srsearch: question, srlimit: '1', format: 'json', origin: '*' }).toString();
-    const response = await fetch(url, { signal: AbortSignal.timeout(2500) });
-    const result = await response.json();
-    const title = result.query?.search?.[0]?.title;
-    const normalizedTitle = normalizeVietnamese(title);
-    const meaningfulWords = normalized.split(/\s+/).filter((word) => word.length > 2 && !['cach', 'mon', 'ngon', 'nhung', 'voi', 'the', 'nao'].includes(word));
-    const relevant = meaningfulWords.some((word) => normalizedTitle.includes(word));
-    const misleadingRauCau = normalized.includes('rau') && !normalized.includes('rau cau') && normalizedTitle.includes('rau cau');
-    if (title && relevant && !misleadingRauCau) return `https://vi.wikipedia.org/wiki/${encodeURIComponent(title.replace(/ /g, '_'))}`;
-  } catch { /* Dùng liên kết tìm kiếm an toàn khi nguồn bài viết không phản hồi. */ }
-  return `https://www.google.com/search?q=${encodeURIComponent(question)}`;
+  // Không tự chọn kết quả Wikipedia đầu tiên vì từ ngắn như "rau" có thể bị
+  // ghép nhầm thành một chủ đề khác như "rau câu". Link tìm kiếm giữ nguyên
+  // ý định của người dùng và để họ chọn bài viết phù hợp từ kết quả mới nhất.
+  return `https://www.google.com/search?q=${encodeURIComponent(`bài viết hướng dẫn ${question}`)}`;
 }
 
 const containsCjkCharacters = (value) => /[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]/u.test(String(value || ''));
 
 async function requestOllama(messages) {
   const call = async (requestMessages) => {
-    const response = await fetch(`${config.ai.ollamaUrl}/api/chat`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: config.ai.ollamaModel, messages: requestMessages, stream: false }) });
+    const response = await fetch(`${config.ai.ollamaUrl}/api/chat`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: config.ai.ollamaModel, messages: requestMessages, stream: false, keep_alive: '10m', options: { temperature: 0.25, top_p: 0.9, repeat_penalty: 1.1 } }) });
     const result = await response.json();
     return { response, result };
   };
