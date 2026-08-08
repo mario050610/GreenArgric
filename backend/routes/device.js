@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { store, nextId } from '../data/store.js';
 import { publishDeviceCommand } from '../mqtt.js';
 import { allowRoles } from '../middleware/auth.js';
+import { persistCommand, persistDevice, updatePersistedCommand, updatePersistedDevice } from '../db.js';
 
 const router = Router();
 
@@ -31,13 +32,19 @@ router.post('/override', allowRoles('admin', 'owner', 'technician'), async (req,
     sent_at: new Date().toISOString(),
   };
   store.commands.unshift(command);
+  await persistCommand(command);
 
   const result = await publishDeviceCommand(device, state, { source: 'manual' });
   command.request_id = result.requestId || null;
   command.result_status = result.sent ? 'sent' : 'not_sent';
+  await updatePersistedCommand(command);
 
   // Khi không bật MQTT, cập nhật tức thời để UI vẫn demo được ở DATA_MODE=memory.
-  if (!result.sent) device.status = state;
+  if (!result.sent) {
+    device.status = state;
+    device.last_seen = new Date().toISOString();
+    await updatePersistedDevice(device);
+  }
 
   return res.json({
     message: result.sent ? 'Đã gửi lệnh đến IoT Gateway' : 'Đã cập nhật chế độ demo; MQTT chưa kết nối',
@@ -47,13 +54,20 @@ router.post('/override', allowRoles('admin', 'owner', 'technician'), async (req,
   });
 });
 
-router.post('/', allowRoles('admin', 'technician'), (req, res) => {
+router.post('/', allowRoles('admin', 'technician'), async (req, res) => {
+  const areaId = Number(req.body.area_id);
+  const deviceCode = String(req.body.device_code || '').trim();
+  const deviceName = String(req.body.device_name || '').trim();
+  const deviceType = String(req.body.device_type || '').trim();
+  if (!store.areas.some((area) => area.area_id === areaId)) return res.status(400).json({ message: 'Khu vực không hợp lệ' });
+  if (!deviceCode || !deviceName || !deviceType) return res.status(400).json({ message: 'Mã, tên và loại thiết bị là bắt buộc' });
+  if (store.devices.some((device) => device.device_code.toLowerCase() === deviceCode.toLowerCase())) return res.status(409).json({ message: 'Mã thiết bị đã tồn tại' });
   const item = {
     device_id: nextId(store.devices, 'device_id'),
-    area_id: Number(req.body.area_id),
-    device_code: req.body.device_code,
-    device_name: req.body.device_name,
-    device_type: req.body.device_type,
+    area_id: areaId,
+    device_code: deviceCode,
+    device_name: deviceName,
+    device_type: deviceType,
     adafruit_device_key: req.body.adafruit_device_key || req.body.device_type,
     status: req.body.status || 'OFF',
     mode: req.body.mode || 'MANUAL',
@@ -61,6 +75,7 @@ router.post('/', allowRoles('admin', 'technician'), (req, res) => {
     status_topic: req.body.status_topic || '',
     last_seen: null,
   };
+  await persistDevice(item);
   store.devices.push(item);
   res.status(201).json(item);
 });

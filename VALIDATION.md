@@ -1,5 +1,32 @@
 # Kết quả kiểm tra bản mã nguồn
 
+## Bổ sung ngày 2026-08-09
+
+- Frontend mở rộng lần 2: PASS (`2217 modules transformed`) với trang Tin nhắn & AI, Báo cáo, Trợ giúp và 16 thiết bị trong lịch công việc/bảo trì.
+- Nhắn tin hai chiều Chủ vườn -> Quản trị viên/Kỹ thuật viên qua Backend memory: PASS; hội thoại được tách theo người gửi/nhận.
+- AI credential guard: PASS (`503 AI_NOT_CONFIGURED` khi chưa có `OPENAI_API_KEY`). Chưa gọi live OpenAI vì môi trường kiểm tra không có khóa API.
+- Frontend TypeScript + Vite production build trong WSL: PASS (`2217 modules transformed`).
+- Backend memory smoke test: PASS cho đúng 8 tài khoản gốc, quản trị viên tạo tài khoản, thêm thiết bị, cập nhật mật khẩu và đăng nhập lại bằng mật khẩu mới.
+- Các nút xuất CSV và PDF tạo file tải xuống thật; chuông thông báo và hộp trò chuyện cơ bản hoạt động phía giao diện.
+- Các khối nội dung dashboard giới hạn `max-w-2xl` đến `max-w-7xl` đã được mở rộng theo chiều ngang phần nội dung.
+- `node --check` và `git diff --check`: PASS.
+
+## Bổ sung ngày 2026-08-08
+
+- Frontend TypeScript + Vite production build trong WSL: PASS (`1610 modules transformed`).
+- Admin tạo tài khoản mới qua `POST /user`: PASS trên Backend memory tạm; mật khẩu được băm bcrypt và phân quyền đúng.
+- Giao diện đã đồng bộ theo `Web Dashboard Design.zip`: Login, sidebar/header, card/table và trang Quản lý người dùng.
+- `python microbit/tests/test_protocol.py`: PASS, gồm JSON UART bị chia gói và nhiều dòng trong bộ đệm.
+- `python iot-gateway/tests/test_switch_protocol.py`: PASS.
+- `python -m compileall -q iot-gateway microbit`: PASS.
+- Kiểm tra cú pháp toàn bộ JavaScript Backend và simulator bằng `node --check`: PASS.
+- Mosquitto local trong WSL Docker Engine: publish/subscribe nhận đúng `local-mqtt-ok`.
+- `git diff --check`: PASS; không phát hiện secret thật trong source.
+
+Kiểm tra Frontend build và Backend runtime chưa hoàn tất trong phiên này: npm trên Windows bị proxy về registry nội bộ rồi timeout; npm 10.8.2/10.9.8 trong container tải package dở và báo `Exit handler never called`, khiến `tsc`, Vite và Express chưa được cài đầy đủ. Đây là giới hạn tải dependency, không được ghi nhận là build pass.
+
+Adafruit IO và thiết bị thật vẫn cần AIO Username/Key cùng Micro:bit/relay của nhóm. Luồng MQTT local đã được kiểm chứng để chạy code khi chưa có các tài nguyên này, nhưng không thay thế minh chứng phần cứng thật.
+
 Ngày kiểm tra: 2026-07-20
 
 ## Đã kiểm tra trong môi trường tạo mã nguồn

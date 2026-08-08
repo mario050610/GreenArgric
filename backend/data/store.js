@@ -21,9 +21,14 @@ export const store = {
     { role_id: 3, role_name: 'technician' },
   ],
   users: [
-    { user_id: 1, role_id: 1, full_name: 'Nguyễn Văn An', email: 'admin@greenargric.edu.vn', password_hash: 'plain:demo123', status: 'active' },
-    { user_id: 2, role_id: 2, full_name: 'Trần Minh Khoa', email: 'owner@greenargric.edu.vn', password_hash: 'plain:demo123', status: 'active' },
-    { user_id: 3, role_id: 3, full_name: 'Lê Thu Hà', email: 'tech@greenargric.edu.vn', password_hash: 'plain:demo123', status: 'active' },
+    { user_id: 1, role_id: 1, full_name: 'Phạm Phước Nguyên', email: 'admin@greenargric.edu.vn', password_hash: 'plain:greenargric2026', status: 'active' },
+    { user_id: 2, role_id: 2, full_name: 'Huỳnh Minh Quân', email: 'owner@greenargric.edu.vn', password_hash: 'plain:greenargric2026', status: 'active' },
+    { user_id: 3, role_id: 3, full_name: 'Trần Huỳnh Đăng Khoa', email: 'tech@greenargric.edu.vn', password_hash: 'plain:greenargric2026', status: 'active' },
+    { user_id: 4, role_id: 2, full_name: 'Nguyễn Thúy Ái', email: 'ai.nta@greenargric.edu.vn', password_hash: 'plain:greenargric2026', status: 'active' },
+    { user_id: 5, role_id: 3, full_name: 'Phạm Đình Duy Thái', email: 'thai.pdd@greenargric.edu.vn', password_hash: 'plain:greenargric2026', status: 'locked' },
+    { user_id: 6, role_id: 3, full_name: 'Nguyễn Thanh Tâm', email: 'tam.nt@greenargric.edu.vn', password_hash: 'plain:greenargric2026', status: 'active' },
+    { user_id: 7, role_id: 2, full_name: 'Trần Thị Nhi', email: 'nhi.tt@greenargric.edu.vn', password_hash: 'plain:greenargric2026', status: 'active' },
+    { user_id: 8, role_id: 3, full_name: 'Nguyễn Văn Đức', email: 'duc.nv@greenargric.edu.vn', password_hash: 'plain:greenargric2026', status: 'active' },
   ],
   areas: [
     { area_id: 1, area_name: 'Khu A', location: 'Nhà màng phía Đông', crop_type: 'Rau muống', description: 'Khu trồng rau ăn lá và mô hình Micro:bit', status: 'active' },
@@ -85,6 +90,18 @@ export const store = {
   tasks: [
     { task_id: 1, area_id: 1, assigned_to: 3, title: 'Kiểm tra đầu dò pH', description: 'Hiệu chuẩn lại cảm biến pH khu A', task_type: 'maintenance', scheduled_at: iso(1440), status: 'pending' },
     { task_id: 2, area_id: 2, assigned_to: 3, title: 'Thay dung dịch dinh dưỡng', description: 'Thay dung dịch theo lịch', task_type: 'care', scheduled_at: iso(2880), status: 'pending' },
+  ],
+  messages: [
+    { message_id: 1, sender_id: 2, receiver_id: 1, content: 'Nhờ quản trị viên kiểm tra kết nối gateway Khu A giúp tôi.', created_at: iso(-75), read_at: iso(-65) },
+    { message_id: 2, sender_id: 1, receiver_id: 2, content: 'Đã nhận. Tôi đang kiểm tra nhật ký hệ thống.', created_at: iso(-60), read_at: iso(-55) },
+    { message_id: 3, sender_id: 2, receiver_id: 3, content: 'Khoa kiểm tra giúp máy điều chỉnh pH tại Khu A nhé.', created_at: iso(-45), read_at: null },
+    { message_id: 4, sender_id: 3, receiver_id: 2, content: 'Dạ, em sẽ kiểm tra lúc 14:00 và cập nhật lại.', created_at: iso(-35), read_at: null },
+    { message_id: 5, sender_id: 1, receiver_id: 3, content: 'Khoa cập nhật giúp tình trạng cảm biến EC Khu C nhé.', created_at: iso(-30), read_at: iso(-28) },
+    { message_id: 6, sender_id: 3, receiver_id: 1, content: 'Cảm biến EC đang lệch 0.23 mS/cm, em đã lên lịch hiệu chỉnh.', created_at: iso(-25), read_at: null },
+    { message_id: 7, sender_id: 2, receiver_id: 1, content: 'Gateway Khu A đã kết nối ổn định lại chưa?', created_at: iso(-20), read_at: null },
+    { message_id: 8, sender_id: 1, receiver_id: 2, content: 'Đã ổn định rồi anh. Dữ liệu cảm biến đang cập nhật bình thường.', created_at: iso(-15), read_at: null },
+    { message_id: 9, sender_id: 2, receiver_id: 3, content: 'Sau khi hiệu chỉnh EC, nhắn lại kết quả cho tôi nhé.', created_at: iso(-10), read_at: null },
+    { message_id: 10, sender_id: 3, receiver_id: 2, content: 'Dạ được, em sẽ gửi kết quả ngay khi hoàn thành.', created_at: iso(-5), read_at: null },
   ],
 };
 

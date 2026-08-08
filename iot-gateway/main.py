@@ -43,13 +43,43 @@ def publish_sensor_packet(adafruit: AdafruitBridge, packet: dict[str, Any]) -> N
     values = packet.get('values')
     if not isinstance(values, dict):
         sensor_type = packet.get('sensor') or packet.get('sensor_type')
-        if sensor_type:
-            values = {str(sensor_type): packet.get('value')}
-        else:
+        if not sensor_type:
             return
+        values = {str(sensor_type): packet.get('value')}
     for sensor_type, value in values.items():
         adafruit.publish_sensor(str(sensor_type), value)
     print('[gateway] Published sensor values:', values)
+
+
+def process_command(adafruit: AdafruitBridge, serial_link: MicrobitSerial | None) -> None:
+    command = adafruit.next_command()
+    while command:
+        if serial_link:
+            serial_link.write_json(command)
+            print('[gateway] Command sent to Micro:bit:', command)
+        elif adafruit.connected:
+            adafruit.publish_device_status(str(command.get('device')), command.get('state'))
+            print('[gateway] Simulated device status:', command)
+        command = adafruit.next_command()
+
+
+def process_serial_packet(
+    adafruit: AdafruitBridge,
+    serial_link: MicrobitSerial,
+) -> dict[str, Any] | None:
+    packet = serial_link.read_json()
+    if not packet:
+        return None
+    packet_type = packet.get('type')
+    if packet_type == 'sensor':
+        return packet
+    if packet_type == 'status' and adafruit.connected:
+        adafruit.publish_device_status(str(packet.get('device')), packet.get('state'))
+        print('[gateway] Device status published:', packet)
+    elif packet_type == 'heartbeat' and adafruit.connected:
+        packet.setdefault('timestamp', iso_now())
+        adafruit.publish_json(adafruit.config.gateway_status_feed, packet)
+    return None
 
 
 def run(simulate: bool) -> int:
@@ -60,86 +90,47 @@ def run(simulate: bool) -> int:
         baud=config.serial_baud,
         timeout=config.serial_timeout,
     )
-
     adafruit.connect()
     if serial_link:
         serial_link.connect()
 
-    adafruit.publish_json(config.gateway_status_feed, {
-        'status': 'online',
-        'mode': 'simulate' if simulate else 'microbit',
-        'serial': serial_link.port if serial_link else None,
-        'timestamp': iso_now(),
-    })
-
-    last_sensor_publish = 0.0
-    pending_sensor_packet = None
-    while RUNNING:
-        command = adafruit.next_command()
-        while command:
-            if serial_link:
-                serial_link.write_json(command)
-                print('[gateway] Command sent to Micro:bit:', command)
-            else:
-                # Chế độ tuần 3: xác nhận giả để kiểm thử Adafruit ↔ Gateway ↔ Backend.
-                if adafruit.connected:
-                    adafruit.publish_device_status(
-                        str(command.get('device')),
-                        command.get('state'),
-                    )
-                    print('[gateway] Simulated device status:', command)
-                else:
-                    print('[gateway] Adafruit disconnected; command acknowledgement skipped')
-            command = adafruit.next_command()
-
-        if serial_link:
-            packet = serial_link.read_json()
-            if packet:
-                packet_type = packet.get('type')
-                if packet_type == 'sensor':
-                    pending_sensor_packet = packet
-                elif packet_type == 'status':
-                    packet.setdefault('timestamp', iso_now())
-                    if adafruit.connected:
-                        adafruit.publish_device_status(
-                            str(packet.get('device')),
-                            packet.get('state'),
-                        )
-                        print('[gateway] Device status published:', packet)
-                    else:
-                        print('[gateway] Adafruit disconnected; device status not published')
-                elif packet_type == 'heartbeat':
-                    packet.setdefault('timestamp', iso_now())
-                    if adafruit.connected:
-                        adafruit.publish_json(config.gateway_status_feed, packet)
-        elif time.monotonic() - last_sensor_publish >= config.publish_interval_seconds:
-            pending_sensor_packet = simulated_packet()
-
-        if (pending_sensor_packet and adafruit.connected
-                and time.monotonic() - last_sensor_publish >= config.publish_interval_seconds):
-            publish_sensor_packet(adafruit, pending_sensor_packet)
-            pending_sensor_packet = None
-            last_sensor_publish = time.monotonic()
-
-        time.sleep(0.05)
-
-    if adafruit.connected:
+    try:
         adafruit.publish_json(config.gateway_status_feed, {
-            'status': 'offline',
+            'status': 'online',
+            'mode': 'simulate' if simulate else 'microbit',
+            'serial': serial_link.port if serial_link else None,
             'timestamp': iso_now(),
         })
-    if serial_link:
-        serial_link.close()
+        last_sensor_publish = 0.0
+        pending_sensor_packet = None
+        while RUNNING:
+            process_command(adafruit, serial_link)
+            if serial_link:
+                pending_sensor_packet = process_serial_packet(adafruit, serial_link) or pending_sensor_packet
+            elif time.monotonic() - last_sensor_publish >= config.publish_interval_seconds:
+                pending_sensor_packet = simulated_packet()
+
+            if (pending_sensor_packet and adafruit.connected
+                    and time.monotonic() - last_sensor_publish >= config.publish_interval_seconds):
+                publish_sensor_packet(adafruit, pending_sensor_packet)
+                pending_sensor_packet = None
+                last_sensor_publish = time.monotonic()
+            time.sleep(0.05)
+    finally:
+        if adafruit.connected:
+            adafruit.publish_json(config.gateway_status_feed, {
+                'status': 'offline',
+                'timestamp': iso_now(),
+            })
+            adafruit.disconnect()
+        if serial_link:
+            serial_link.close()
     return 0
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description='GREEN ARGRIC Python IoT Gateway')
-    parser.add_argument(
-        '--simulate',
-        action='store_true',
-        help='Gửi dữ liệu giả lên Adafruit IO mà không cần Micro:bit',
-    )
+    parser.add_argument('--simulate', action='store_true', help='Publish simulated data without a Micro:bit')
     args = parser.parse_args()
     signal.signal(signal.SIGINT, stop_handler)
     signal.signal(signal.SIGTERM, stop_handler)

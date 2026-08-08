@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { store, nextId } from '../data/store.js';
 import { evaluateReading } from '../core/automation.js';
 import { allowRoles } from '../middleware/auth.js';
+import { persistReading } from '../db.js';
 
 const router = Router();
 router.get('/', (req, res) => res.json(store.sensors.map((sensor) => ({
@@ -54,6 +55,8 @@ router.post('/data', async (req, res) => {
   };
   store.readings.push(reading);
   sensor.last_seen = reading.reading_time;
+  sensor.status = 'online';
+  await persistReading(reading);
   await evaluateReading(reading, sensor);
   return res.status(201).json(reading);
 });

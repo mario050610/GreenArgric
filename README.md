@@ -117,6 +117,7 @@ Mật khẩu chung: `demo123`
 - `docs/ADAFRUIT-SETUP.md`: tạo feed/dashboard và kiểm thử server trước.
 - `docs/MICROBIT-WIRING.md`: nối Micro:bit, cảm biến và relay.
 - `docs/WORK-DIVISION-4-DEVELOPERS.md`: chia code cho bốn thành viên.
+- `docs/CODE-HANDOFF-4-MEMBERS.md`: trạng thái code, lệnh kiểm tra và phần còn cần thiết bị thật.
 - `backend/spec-iot.md`: đặc tả feed cảm biến, feed điều khiển 1/0 và giao thức Serial.
 - `docs/section-12/`: mẫu minh chứng báo cáo.
 

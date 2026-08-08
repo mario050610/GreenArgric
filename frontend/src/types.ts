@@ -2,6 +2,7 @@ export type Role = 'admin' | 'owner' | 'technician';
 
 export type User = {
   id: number;
+  user_id?: number;
   full_name: string;
   email: string;
   role: Role;
@@ -37,6 +38,7 @@ export type Device = {
   status: 'ON' | 'OFF';
   mode: 'AUTO' | 'MANUAL';
   area_name?: string;
+  last_seen?: string | null;
 };
 
 export type Alert = {

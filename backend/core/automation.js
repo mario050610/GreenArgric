@@ -1,5 +1,6 @@
 import { store, nextId } from '../data/store.js';
 import { publishDeviceCommand } from '../mqtt.js';
+import { persistAlert, persistCommand, updatePersistedCommand, updatePersistedDevice } from '../db.js';
 
 const actions = {
   water_level: { below: 'circulation_pump', state: 'ON' },
@@ -26,7 +27,7 @@ export async function evaluateReading(reading, sensor) {
     && item.status === 'open',
   );
   if (!duplicate) {
-    store.alerts.unshift({
+    const alert = {
       alert_id: nextId(store.alerts, 'alert_id'),
       area_id: reading.area_id,
       sensor_id: sensor.sensor_id,
@@ -36,7 +37,9 @@ export async function evaluateReading(reading, sensor) {
       severity: threshold.warning_level,
       status: 'open',
       created_at: new Date().toISOString(),
-    });
+    };
+    store.alerts.unshift(alert);
+    await persistAlert(alert);
   }
 
   const rule = actions[sensor.sensor_type];
@@ -60,9 +63,15 @@ export async function evaluateReading(reading, sensor) {
     sent_at: new Date().toISOString(),
   };
   store.commands.unshift(command);
+  await persistCommand(command);
 
   const result = await publishDeviceCommand(device, rule.state, { source: 'automation' });
   command.request_id = result.requestId || null;
   command.result_status = result.sent ? 'sent' : 'not_sent';
-  if (!result.sent) device.status = rule.state;
+  await updatePersistedCommand(command);
+  if (!result.sent) {
+    device.status = rule.state;
+    device.last_seen = new Date().toISOString();
+    await updatePersistedDevice(device);
+  }
 }

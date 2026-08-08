@@ -3,7 +3,7 @@ import cors from 'cors';
 import morgan from 'morgan';
 import swaggerUi from 'swagger-ui-express';
 import { config } from './config.js';
-import { connectDatabase } from './db.js';
+import { connectDatabase, hydrateStoreFromDatabase } from './db.js';
 import { startMqtt, getMqttStatus } from './mqtt.js';
 import { authRequired } from './middleware/auth.js';
 import { errorHandler, notFound } from './middleware/error.js';
@@ -19,6 +19,8 @@ import activityRoutes from './routes/activity.js';
 import taskRoutes from './routes/task.js';
 import userRoutes from './routes/user.js';
 import integrationRoutes from './routes/integration.js';
+import messageRoutes from './routes/message.js';
+import aiRoutes from './routes/ai.js';
 
 const app = express();
 app.use(cors({ origin: config.corsOrigin, credentials: true }));
@@ -42,11 +44,17 @@ app.use('/activity', authRequired, activityRoutes);
 app.use('/task', authRequired, taskRoutes);
 app.use('/user', authRequired, userRoutes);
 app.use('/integration', authRequired, integrationRoutes);
+app.use('/message', authRequired, messageRoutes);
+app.use('/ai', authRequired, aiRoutes);
 app.use(notFound);
 app.use(errorHandler);
 
 await connectDatabase().catch((error) => {
   console.error('[database]', error.message);
+  process.exitCode = 1;
+});
+await hydrateStoreFromDatabase().catch((error) => {
+  console.error('[database] Hydration failed:', error.message);
   process.exitCode = 1;
 });
 startMqtt();
