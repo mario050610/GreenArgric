@@ -67,7 +67,7 @@ const ownerMessages = await ownerConversation.json();
 if (!ownerMessages.some((message) => message.content === 'Tin nhắn smoke test từ kỹ thuật viên')) throw new Error('Owner did not receive technician message');
 const aiResponse = await fetch(`${baseUrl}/ai/chat`, { method: 'POST', headers, body: JSON.stringify({ message: 'Tình trạng vườn?' }) });
 const aiResult = await aiResponse.json();
-if (!aiResponse.ok || aiResult.provider !== 'ollama' || aiResult.reply !== 'Phản hồi Ollama kiểm thử') throw new Error(`Ollama chat failed: ${aiResponse.status} ${JSON.stringify(aiResult)}`);
+if (!aiResponse.ok || aiResult.provider !== 'ollama' || !aiResult.reply.includes('Phản hồi Ollama kiểm thử') || !aiResult.reply.includes('Tham khảo thêm tại link:')) throw new Error(`Ollama chat failed: ${aiResponse.status} ${JSON.stringify(aiResult)}`);
 const groundedAdminResponse = await fetch(`${baseUrl}/ai/chat`, { method: 'POST', headers: ownerHeaders, body: JSON.stringify({ message: 'Quản trị viên tên gì?' }) });
 const groundedAdmin = await groundedAdminResponse.json();
 if (!groundedAdminResponse.ok || groundedAdmin.provider !== 'system' || !groundedAdmin.reply.includes('Phạm Phước Nguyên') || groundedAdmin.reply.includes('Huỳnh Minh Quân')) throw new Error(`Grounded role answer failed: ${groundedAdminResponse.status} ${JSON.stringify(groundedAdmin)}`);
