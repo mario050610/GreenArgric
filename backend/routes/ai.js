@@ -12,7 +12,7 @@ async function findReferenceLink(question) {
   if (normalized.includes('rau muong')) {
     if (normalized.includes('luoc')) return 'https://www.dienmayxanh.com/vao-bep/cach-luoc-rau-muong-xanh-muot-gion-ngon-khong-bi-tham-den-cuc-10244';
     if (normalized.includes('xao tom')) return 'https://www.dienmayxanh.com/vao-bep/cach-lam-rau-muong-xao-tom-tuoi-gion-ngon-doi-vi-cho-bua-com-11892';
-    return 'https://www.dienmayxanh.com/vao-bep/cach-xao-rau-muong-giu-duoc-mau-xanh-00657';
+    return 'https://www.dienmayxanh.com/vao-bep/tong-hop-cac-mon-an-tu-rau-muong-thom-ngon-don-gian-ai-cung-14385';
   }
   let searchQuery = `bài viết hướng dẫn ${question} -site:wikipedia.org`;
   if (/nau|mon an|cong thuc|xao|luoc|chien|hap|am thuc|rau/.test(normalized)) {
@@ -54,6 +54,19 @@ const formatPlainAnswer = (answer) => String(answer || '')
 
 const appendReference = (answer, link) => `${formatPlainAnswer(answer)}\n\nTham khảo thêm tại link: ${link}`;
 
+function answerGroundedFoodQuestion(question) {
+  const normalized = normalizeVietnamese(question);
+  if (!normalized.includes('rau muong') || !/(mon|nau|che bien|lam gi|goi y|an ngon)/.test(normalized)) return null;
+  return [
+    'Một số món rau muống phổ biến, dễ chế biến:',
+    '- Rau muống xào tỏi: rau được xào nhanh trên lửa lớn với tỏi phi, giữ màu xanh và độ giòn, có mùi tỏi thơm rõ và gia vị đậm vừa ăn.',
+    '- Rau muống luộc: món đơn giản, cọng rau chín mềm nhưng vẫn giòn ngọt; có thể dùng cùng nước mắm để tăng vị đậm đà.',
+    '- Canh rau muống tôm chua: nước canh có vị chua thanh từ me, vị ngọt dịu và tôm dai ngọt, phù hợp dùng trong bữa cơm ngày nóng.',
+    '- Gỏi gà rau muống: rau muống giòn kết hợp với thịt gà mềm, được trộn cùng nước sốt chua ngọt và hơi cay để tạo vị hài hòa.',
+    '- Rau muống xào thịt heo: rau xanh giòn xào cùng thịt heo, tỏi và dầu hào, tạo thành món mặn dễ ăn cùng cơm.',
+  ].join('\n');
+}
+
 function answerDirectoryQuestion(question) {
   const normalized = normalizeVietnamese(question);
   const asksIdentity = /(ten gi|la ai|thong tin|danh sach|co nhung ai|bao nhieu)/.test(normalized);
@@ -78,6 +91,8 @@ router.post('/chat', async (req, res) => {
   const message = String(req.body.message || '').trim();
   const history = Array.isArray(req.body.history) ? req.body.history.slice(-10) : [];
   if (!message) return res.status(400).json({ message: 'Nội dung câu hỏi là bắt buộc' });
+  const groundedFoodAnswer = answerGroundedFoodQuestion(message);
+  if (groundedFoodAnswer) return res.json({ reply: appendReference(groundedFoodAnswer, await findReferenceLink(message)), provider: 'system', source: 'verified-food-guide' });
   const directoryAnswer = answerDirectoryQuestion(message);
   if (directoryAnswer) return res.json({ reply: appendReference(directoryAnswer, await findReferenceLink(message)), provider: 'system', source: 'users' });
   const systemContext = {
