@@ -36,7 +36,7 @@ async function requestOllama(messages) {
   let output = await call(messages);
   if (output.response.ok) {
     const draft = output.result.message?.content || '';
-    const edited = await call([...messages, { role: 'assistant', content: draft }, { role: 'user', content: 'Hãy biên tập lại câu trả lời trên: chỉ dùng tiếng Việt tự nhiên và đúng chính tả; không dùng từ nước ngoài, chữ Hán, chữ Trung Quốc hay ký tự lỗi; không dùng Markdown; mỗi ý phải là một gạch đầu dòng riêng và có dòng trống ngăn cách. Chỉ trả về câu trả lời đã biên tập.' }]);
+    const edited = await call([...messages, { role: 'assistant', content: draft }, { role: 'user', content: 'Hãy biên tập lại câu trả lời trên: chỉ dùng tiếng Việt tự nhiên và đúng chính tả; bảo đảm các từ có khoảng trắng đầy đủ, không viết dính từ; không dùng từ nước ngoài, chữ Hán, chữ Trung Quốc hay ký tự lỗi; không dùng Markdown; mỗi ý là một gạch đầu dòng trên một dòng riêng, không chèn dòng trống giữa các gạch đầu dòng. Chỉ trả về câu trả lời đã biên tập.' }]);
     if (edited.response.ok && edited.result.message?.content) output = edited;
     if (containsForeignScript(output.result.message?.content)) {
       output.result.message.content = String(output.result.message.content).replace(foreignScriptGlobalPattern, '').replace(/[ \t]{2,}/g, ' ');
@@ -49,7 +49,6 @@ const formatPlainAnswer = (answer) => String(answer || '')
   .replace(/\*\*(.*?)\*\*/g, '$1')
   .replace(/^\s*\*\s+/gm, '- ')
   .replace(/^\s*#{1,6}\s+/gm, '')
-  .replace(/\n(?=(?:- |\d+[.)]\s))/g, '\n\n')
   .replace(/\n{3,}/g, '\n\n')
   .trim();
 
