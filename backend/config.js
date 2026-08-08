@@ -23,6 +23,8 @@ export const config = {
     provider: String(process.env.AI_PROVIDER || 'ollama').toLowerCase(),
     ollamaUrl: String(process.env.OLLAMA_URL || 'http://127.0.0.1:11434').replace(/\/$/, ''),
     ollamaModel: process.env.OLLAMA_MODEL || 'gemma3:4b',
+    tavilyApiKey: process.env.TAVILY_API_KEY || '',
+    tavilySearchUrl: process.env.TAVILY_SEARCH_URL || 'https://api.tavily.com/search',
   },
   db: {
     server: process.env.DB_SERVER || '127.0.0.1',

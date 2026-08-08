@@ -67,7 +67,7 @@ const ownerMessages = await ownerConversation.json();
 if (!ownerMessages.some((message) => message.content === 'Tin nhắn smoke test từ kỹ thuật viên')) throw new Error('Owner did not receive technician message');
 const aiResponse = await fetch(`${baseUrl}/ai/chat`, { method: 'POST', headers, body: JSON.stringify({ message: 'Tình trạng vườn?' }) });
 const aiResult = await aiResponse.json();
-if (!aiResponse.ok || aiResult.provider !== 'ollama' || !aiResult.reply.includes('Phản hồi Ollama kiểm thử') || !aiResult.reply.includes('Tham khảo thêm tại link:')) throw new Error(`Ollama chat failed: ${aiResponse.status} ${JSON.stringify(aiResult)}`);
+if (!aiResponse.ok || aiResult.provider !== 'ollama' || !aiResult.reply.includes('Phản hồi Ollama kiểm thử') || !aiResult.reply.includes('Nguồn tham khảo đã đối chiếu:') || !aiResult.reply.includes('https://example.com/bai-viet-kiem-chung')) throw new Error(`Grounded Ollama chat failed: ${aiResponse.status} ${JSON.stringify(aiResult)}`);
 if (aiResult.reply.includes('**') || /^\s*\*/m.test(aiResult.reply)) throw new Error(`Markdown cleanup failed: ${JSON.stringify(aiResult)}`);
 if (/[\u3400-\u9FFF]/u.test(aiResult.reply)) throw new Error(`Foreign script cleanup failed: ${JSON.stringify(aiResult)}`);
 const cookingResponse = await fetch(`${baseUrl}/ai/chat`, { method: 'POST', headers, body: JSON.stringify({ message: 'Cách nấu rau muống ngon?' }) });

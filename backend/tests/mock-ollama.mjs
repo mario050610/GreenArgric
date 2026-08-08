@@ -1,6 +1,7 @@
 import http from 'node:http';
 
 http.createServer((req, res) => {
+  if (req.method === 'POST' && req.url === '/search') { res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({ results: [{ title: 'Bài viết kiểm chứng', url: 'https://example.com/bai-viet-kiem-chung', content: 'Nội dung mô tả đã được lấy từ bài viết nguồn để kiểm thử.', score: 0.95 }] })); return; }
   if (req.method !== 'POST' || req.url !== '/api/chat') { res.writeHead(404).end(); return; }
   let body = '';
   req.on('data', (chunk) => { body += chunk; });
@@ -8,7 +9,7 @@ http.createServer((req, res) => {
     const payload = JSON.parse(body || '{}');
     res.setHeader('content-type', 'application/json');
     const systemPrompt = payload.messages?.find((message) => message.role === 'system')?.content || '';
-    if (!systemPrompt.includes('trợ lý thông minh đa năng') || !systemPrompt.includes('"users"')) {
+    if (!systemPrompt.includes('verifiedWebSources') || !systemPrompt.includes('"users"')) {
       res.writeHead(400);
       res.end(JSON.stringify({ error: 'Missing general assistant prompt or system users context' }));
       return;
