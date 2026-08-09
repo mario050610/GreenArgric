@@ -85,6 +85,10 @@ const DEVICES_INIT = [
   { id: 14, name: "Đèn LED sinh trưởng F", zone: "Khu F", type: "light", on: true, mode: "schedule", watt: 300, lastRun: "06:00" },
   { id: 15, name: "Máy châm dinh dưỡng B", zone: "Khu B", type: "dosing", on: false, mode: "auto", watt: 48, lastRun: "07:50" },
   { id: 16, name: "Bơm oxy hòa tan C", zone: "Khu C", type: "pump", on: true, mode: "auto", watt: 65, lastRun: "10:05" },
+  ...["G", "H", "I", "J", "K", "L"].flatMap((zone, index) => [
+    { id: 17 + index * 2, name: `Bơm tuần hoàn ${zone}`, zone: `Khu ${zone}`, type: "pump", on: index % 2 === 0, mode: "auto", watt: 120 + index * 5, lastRun: "10:00" },
+    { id: 18 + index * 2, name: `Đèn LED sinh trưởng ${zone}`, zone: `Khu ${zone}`, type: "light", on: true, mode: "schedule", watt: 260 + index * 10, lastRun: "06:00" },
+  ]),
 ];
 
 const ZONES = [
@@ -94,6 +98,12 @@ const ZONES = [
   { id: 4, name: "Khu D", crop: "Húng quế", area: "12 m²", planted: "10/06", harvest: "25/07", health: 95, sensors: 3, status: "good" },
   { id: 5, name: "Khu E", crop: "Cà chua bi", area: "25 m²", planted: "01/05", harvest: "15/07", health: 63, sensors: 5, status: "danger" },
   { id: 6, name: "Khu F", crop: "Dưa leo", area: "22 m²", planted: "05/06", harvest: "20/07", health: 88, sensors: 4, status: "good" },
+  { id: 7, name: "Khu G", crop: "Cải thìa", area: "16 m²", planted: "08/06", harvest: "22/07", health: 90, sensors: 6, status: "good" },
+  { id: 8, name: "Khu H", crop: "Dâu tây", area: "24 m²", planted: "12/05", harvest: "28/07", health: 86, sensors: 6, status: "good" },
+  { id: 9, name: "Khu I", crop: "Cải kale", area: "18 m²", planted: "03/06", harvest: "24/07", health: 84, sensors: 6, status: "good" },
+  { id: 10, name: "Khu J", crop: "Bạc hà", area: "14 m²", planted: "11/06", harvest: "26/07", health: 91, sensors: 6, status: "good" },
+  { id: 11, name: "Khu K", crop: "Ớt chuông", area: "26 m²", planted: "18/05", harvest: "05/08", health: 79, sensors: 6, status: "warning" },
+  { id: 12, name: "Khu L", crop: "Xà lách tím", area: "17 m²", planted: "07/06", harvest: "23/07", health: 89, sensors: 6, status: "good" },
 ];
 
 const USERS_INIT = [
@@ -394,7 +404,7 @@ function LoginScreen({ onLogin }: { onLogin: (role: Role, username: string, pass
 
           <div className="grid grid-cols-3 gap-4 mb-10 max-w-sm">
             {[
-              { v: "6", l: "Khu vực" },
+              { v: "12", l: "Khu vực" },
               { v: "28+", l: "Cảm biến IoT" },
               { v: "99.8%", l: "Uptime" },
             ].map(({ v, l }) => (
@@ -566,7 +576,7 @@ function _REMOVED_HomeScreen({ onOwner, onAdmin, onTech }: { onOwner: () => void
       <div className="bg-white border-y border-gray-100 py-6 px-16">
         <div className="flex items-center justify-center gap-16">
           {[
-            { v: "6", l: "Khu vực trồng", Icon: Map },
+            { v: "12", l: "Khu vực trồng", Icon: Map },
             { v: "28+", l: "Cảm biến IoT", Icon: Activity },
             { v: "8", l: "Thiết bị tự động", Icon: Zap },
             { v: "99.8%", l: "Uptime hệ thống", Icon: CheckCircle },
@@ -3373,7 +3383,7 @@ function OwnerProfileScreen() {
   const inputCls = `w-full border rounded-xl px-3 py-2.5 text-sm text-gray-700 outline-none transition-all ${editing ? "border-gray-200 focus:border-green-400 focus:ring-2 focus:ring-green-50 bg-white" : "border-transparent bg-gray-50 cursor-default"}`;
 
   const stats = [
-    { label: "Khu vực quản lý", value: "6" },
+    { label: "Khu vực quản lý", value: "12" },
     { label: "Tổng diện tích", value: "112 m²" },
     { label: "Lứa đã thu hoạch", value: "14" },
     { label: "Ngày tham gia", value: "01/03/2025" },
@@ -3934,7 +3944,23 @@ const GROWTH_STAGES = ["Gieo hạt", "Nảy mầm", "Ra lá thật", "Phát tri�
 
 function ZoneDetailScreen({ zoneId, onBack }: { zoneId: number; onBack: () => void }) {
   const zone = ZONES.find(z => z.id === zoneId) || ZONES[0];
-  const detail = ZONE_DETAIL_DATA[zone.id] || ZONE_DETAIL_DATA[1];
+  const extraValues: Record<number, [number, number, number, number]> = {
+    7: [25.1, 66, 6.0, 1.76], 8: [23.9, 69, 5.9, 1.68], 9: [24.8, 65, 6.4, 1.91],
+    10: [26.0, 60, 6.1, 1.73], 11: [27.0, 58, 6.5, 2.02], 12: [24.3, 68, 6.2, 1.79],
+  };
+  const values = extraValues[zone.id] || [25.8, 63, 6.2, 1.88];
+  const detail = ZONE_DETAIL_DATA[zone.id] || {
+    variety: zone.crop, startDate: zone.planted, harvestDate: zone.harvest,
+    growthStage: "Phát triển lá", growthPct: zone.health,
+    notes: "Khu vực đang được theo dõi tự động và vận hành theo ngưỡng đã cấu hình.",
+    devices: DEVICES_INIT.filter(device => device.zone === zone.name).map(device => ({ name: device.name, type: device.type, status: device.on ? "on" : "off" })),
+    envHistory: [
+      { param: "Nhiệt độ", value: `${values[0]}°C`, trend: "stable" as const },
+      { param: "Độ ẩm", value: `${values[1]}%`, trend: "stable" as const },
+      { param: "pH", value: `${values[2]}`, trend: "stable" as const },
+      { param: "EC", value: `${values[3]} mS/cm`, trend: "stable" as const },
+    ],
+  };
   const stageIdx = GROWTH_STAGES.indexOf(detail.growthStage);
   const statusColor = { good: { bg: "#DCFCE7", color: "#166534", label: "Tốt" }, warning: { bg: "#FEF3C7", color: "#D97706", label: "Cần chú ý" }, danger: { bg: "#FEE2E2", color: "#DC2626", label: "Nguy hiểm" } }[zone.status] || { bg: "#F3F4F6", color: "#6B7280", label: "—" };
   const healthColor = zone.health >= 80 ? "#2E7D32" : zone.health >= 65 ? "#D97706" : "#EF4444";
