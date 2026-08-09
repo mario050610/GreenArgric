@@ -16,5 +16,7 @@ assert.doesNotMatch(areas, /https?:\/\//);
 
 const tasks = answerSystemDataQuestion('Công việc của tôi là gì?', technician);
 assert.match(tasks, /Kiểm tra đầu dò pH/);
+assert.match(tasks, /Bảo trì bơm tuần hoàn F/);
+assert.equal(tasks.split('\n').length, 10);
 
 console.log('system AI data queries: PASS');

@@ -118,6 +118,14 @@ export const store = {
   tasks: [
     { task_id: 1, area_id: 1, assigned_to: 3, title: 'Kiểm tra đầu dò pH', description: 'Hiệu chuẩn lại cảm biến pH khu A', task_type: 'maintenance', scheduled_at: iso(1440), status: 'pending' },
     { task_id: 2, area_id: 2, assigned_to: 3, title: 'Thay dung dịch dinh dưỡng', description: 'Thay dung dịch theo lịch', task_type: 'care', scheduled_at: iso(2880), status: 'pending' },
+    { task_id: 3, area_id: 1, assigned_to: 3, title: 'Kiểm tra hệ thống đèn LED A', description: 'Đo cường độ và kiểm tra lịch chiếu sáng', task_type: 'maintenance', scheduled_at: iso(4320), status: 'pending' },
+    { task_id: 4, area_id: 1, assigned_to: 3, title: 'Kiểm tra máy điều chỉnh pH', description: 'Kiểm tra van và đường ống bơm châm', task_type: 'maintenance', scheduled_at: iso(5760), status: 'pending' },
+    { task_id: 5, area_id: 3, assigned_to: 3, title: 'Vệ sinh quạt thông gió C', description: 'Vệ sinh cánh quạt và kiểm tra độ rung', task_type: 'maintenance', scheduled_at: iso(7200), status: 'pending' },
+    { task_id: 6, area_id: 4, assigned_to: 3, title: 'Kiểm tra bơm oxy hòa tan D', description: 'Đo áp suất và kiểm tra lưu lượng khí', task_type: 'maintenance', scheduled_at: iso(8640), status: 'pending' },
+    { task_id: 7, area_id: 5, assigned_to: 3, title: 'Kiểm tra bơm tuần hoàn E', description: 'Kiểm tra lưu lượng và vệ sinh bộ lọc', task_type: 'maintenance', scheduled_at: iso(10080), status: 'pending' },
+    { task_id: 8, area_id: 5, assigned_to: 3, title: 'Vệ sinh đèn LED sinh trưởng E', description: 'Vệ sinh bề mặt và đo cường độ sáng', task_type: 'maintenance', scheduled_at: iso(11520), status: 'pending' },
+    { task_id: 9, area_id: 6, assigned_to: 3, title: 'Kiểm tra bơm dinh dưỡng F', description: 'Kiểm tra ống châm và định lượng dung dịch', task_type: 'maintenance', scheduled_at: iso(12960), status: 'pending' },
+    { task_id: 10, area_id: 6, assigned_to: 3, title: 'Bảo trì bơm tuần hoàn F', description: 'Vệ sinh và kiểm tra lưu lượng tuần hoàn', task_type: 'maintenance', scheduled_at: iso(14400), status: 'pending' },
   ],
   messages: [
     { message_id: 1, sender_id: 2, receiver_id: 1, content: 'Nhờ quản trị viên kiểm tra kết nối gateway Khu A giúp tôi.', created_at: iso(-75), read_at: iso(-65) },

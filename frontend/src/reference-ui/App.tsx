@@ -2185,14 +2185,14 @@ function TasksScreen({ role }: { role: Role }) {
   const [schedule, setSchedule] = useState([
     { id: 1, device: "Máy bơm dinh dưỡng A", zone: "Khu A", type: "Bảo trì định kỳ", date: "29/06/2026", tech: "Trần Huỳnh Đăng Khoa", status: "due" },
     { id: 2, device: "Máy bơm tưới B", zone: "Khu B", type: "Thay bộ lọc", date: "02/07/2026", tech: "Trần Huỳnh Đăng Khoa", status: "upcoming" },
-    { id: 3, device: "Hệ thống đèn LED A", zone: "Khu A", type: "Kiểm tra cường độ", date: "05/07/2026", tech: "Nguyễn Thúy Ái", status: "upcoming" },
-    { id: 4, device: "Máy điều chỉnh pH", zone: "Khu A", type: "Kiểm tra van bơm", date: "28/06/2026", tech: "Nguyễn Thúy Ái", status: "overdue" },
+    { id: 3, device: "Hệ thống đèn LED A", zone: "Khu A", type: "Kiểm tra cường độ", date: "05/07/2026", tech: "Trần Huỳnh Đăng Khoa", status: "upcoming" },
+    { id: 4, device: "Máy điều chỉnh pH", zone: "Khu A", type: "Kiểm tra van bơm", date: "28/06/2026", tech: "Trần Huỳnh Đăng Khoa", status: "overdue" },
     { id: 5, device: "Quạt thông gió C", zone: "Khu C", type: "Vệ sinh cánh quạt", date: "10/07/2026", tech: "Trần Huỳnh Đăng Khoa", status: "upcoming" },
     { id: 6, device: "Bơm tuần hoàn E", zone: "Khu E", type: "Kiểm tra lưu lượng", date: "11/07/2026", tech: "Trần Huỳnh Đăng Khoa", status: "upcoming" },
-    { id: 7, device: "Đèn LED sinh trưởng E", zone: "Khu E", type: "Vệ sinh và đo cường độ", date: "12/07/2026", tech: "Nguyễn Thúy Ái", status: "upcoming" },
+    { id: 7, device: "Đèn LED sinh trưởng E", zone: "Khu E", type: "Vệ sinh và đo cường độ", date: "12/07/2026", tech: "Trần Huỳnh Đăng Khoa", status: "upcoming" },
     { id: 8, device: "Bơm dinh dưỡng F", zone: "Khu F", type: "Kiểm tra ống châm", date: "13/07/2026", tech: "Trần Huỳnh Đăng Khoa", status: "upcoming" },
     { id: 9, device: "Bơm tuần hoàn F", zone: "Khu F", type: "Bảo trì định kỳ", date: "15/07/2026", tech: "Trần Huỳnh Đăng Khoa", status: "upcoming" },
-    { id: 10, device: "Máy châm dinh dưỡng B", zone: "Khu B", type: "Hiệu chỉnh định lượng", date: "16/07/2026", tech: "Nguyễn Thúy Ái", status: "upcoming" },
+    { id: 10, device: "Máy châm dinh dưỡng B", zone: "Khu B", type: "Hiệu chỉnh định lượng", date: "16/07/2026", tech: "Trần Huỳnh Đăng Khoa", status: "upcoming" },
   ]);
   const [repairLogs, setRepairLogs] = useState([
     { id: "RL-029", date: "29/06/2026", device: "Máy điều chỉnh pH", zone: "Khu A", issue: "Van bơm châm dịch tắc nghẽn", action: "Tháo vệ sinh van, thay gioăng", tech: "Trần Huỳnh Đăng Khoa", status: "completed" },
