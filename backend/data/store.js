@@ -150,6 +150,17 @@ const defaults = {
   water_level: 72,
 };
 
+// Đồng bộ với số liệu riêng trên màn hình chi tiết của từng khu, tránh dùng
+// một bộ giá trị mẫu cho toàn bộ sáu khu.
+const areaDefaults = {
+  1: { temperature: 25.8, humidity: 63, ph: 6.2, ec: 1.88, light: 680, water_level: 72 },
+  2: { temperature: 24.7, humidity: 67, ph: 6.1, ec: 1.82, light: 620, water_level: 76 },
+  3: { temperature: 26.3, humidity: 62, ph: 6.3, ec: 1.62, light: 590, water_level: 38 },
+  4: { temperature: 25.5, humidity: 64, ph: 6.0, ec: 1.84, light: 480, water_level: 74 },
+  5: { temperature: 27.2, humidity: 59, ph: 6.8, ec: 1.1, light: 710, water_level: 68 },
+  6: { temperature: 26.5, humidity: 61, ph: 6.2, ec: 1.89, light: 640, water_level: 70 },
+};
+
 const thresholdDefaults = {
   temperature: [22, 30, 'medium'], humidity: [60, 85, 'low'], ph: [5.8, 6.5, 'high'],
   ec: [1.2, 2.2, 'high'], water_level: [40, 100, 'high'], light: [500, 1200, 'low'],
@@ -168,7 +179,7 @@ for (const area of store.areas) {
 
 for (const sensor of store.sensors) {
   for (let i = 24; i >= 0; i -= 1) {
-    const base = defaults[sensor.sensor_type] ?? 0;
+    const base = areaDefaults[sensor.area_id]?.[sensor.sensor_type] ?? defaults[sensor.sensor_type] ?? 0;
     const scale = sensor.sensor_type === 'light'
       ? 80
       : sensor.sensor_type === 'water_level'

@@ -144,6 +144,25 @@ export function answerSystemDataQuestion(question, currentUser) {
     ? store.areas.filter((area) => normalizeVietnamese(area.area_name) === `khu ${areaMatch[1]}`)
     : store.areas;
 
+  if (/(ai.*quan ly.*khu|quan ly.*khu nao|khu.*do ai.*quan ly|nguoi quan ly)/.test(normalized)) {
+    if (/(toi|cua toi)/.test(normalized)) {
+      if (currentUser.role === 'owner') {
+        const ownedAreas = store.areas.filter((area) => area.owner_id === currentUser.id);
+        return ownedAreas.length ? `Bạn là chủ vườn quản lý: ${ownedAreas.map((area) => area.area_name).join(', ')}.` : 'Tài khoản chủ vườn của bạn hiện chưa được gán khu vực quản lý.';
+      }
+      if (currentUser.role === 'technician') {
+        const areaIds = [...new Set(store.tasks.filter((task) => task.assigned_to === currentUser.id).map((task) => task.area_id))];
+        const areaNames = areaIds.map((id) => store.areas.find((area) => area.area_id === id)?.area_name).filter(Boolean);
+        return areaNames.length ? `Bạn là kỹ thuật viên được giao công việc tại: ${areaNames.join(', ')}. Đây là khu vực phụ trách kỹ thuật, không phải quyền sở hữu hoặc quản lý của chủ vườn.` : 'Bạn hiện chưa được giao công việc tại khu vực nào.';
+      }
+      return `Bạn là quản trị viên quản trị hệ thống gồm: ${store.areas.map((area) => area.area_name).join(', ')}.`;
+    }
+    return store.areas.map((area) => {
+      const owner = store.users.find((user) => user.user_id === area.owner_id);
+      return `- ${area.area_name}: chủ vườn quản lý là ${owner?.full_name || 'chưa phân công'}.`;
+    }).join('\n');
+  }
+
   if (/(khu vuc|khu trong|vuon hom nay|tinh hinh.*vuon|tong quan.*vuon)/.test(normalized)) {
     return selectedAreas.map((area) => {
       const readings = ['temperature', 'humidity', 'ph', 'ec', 'water_level']

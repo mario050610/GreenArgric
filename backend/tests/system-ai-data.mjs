@@ -13,6 +13,19 @@ assert.match(areas, /Khu E/);
 assert.match(areas, /Khu F/);
 assert.doesNotMatch(areas, /chưa có dữ liệu cảm biến/);
 assert.doesNotMatch(areas, /https?:\/\//);
+assert.match(areas, /Khu A:[^\n]*Nhiệt độ 25\.8/);
+assert.match(areas, /Khu B:[^\n]*Nhiệt độ 24\.7/);
+assert.match(areas, /Khu E:[^\n]*pH 6\.8/);
+
+const managers = answerSystemDataQuestion('Ai quản lý khu nào?', owner);
+assert.match(managers, /Khu A: chủ vườn quản lý là Huỳnh Minh Quân/);
+assert.match(managers, /Khu C: chủ vườn quản lý là Nguyễn Thúy Ái/);
+assert.match(managers, /Khu E: chủ vườn quản lý là Trần Thị Nhi/);
+assert.doesNotMatch(managers, /Trần Huỳnh Đăng Khoa|https?:\/\//);
+
+const myAreas = answerSystemDataQuestion('Tôi quản lý khu nào?', owner);
+assert.match(myAreas, /Khu A, Khu B/);
+assert.doesNotMatch(myAreas, /Khu C/);
 
 const tasks = answerSystemDataQuestion('Công việc của tôi là gì?', technician);
 assert.match(tasks, /Kiểm tra đầu dò pH/);
