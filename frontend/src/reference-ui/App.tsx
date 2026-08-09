@@ -1486,6 +1486,7 @@ function ZonesScreen() {
   const apiHeaders = () => ({ "content-type": "application/json", authorization: `Bearer ${localStorage.getItem("greenArgricToken")}` });
   const [selectedZoneId, setSelectedZoneId] = useState<number | null>(null);
   const [drawerMode, setDrawerMode] = useState<"detail" | "manage">("detail");
+  const [manageDraft, setManageDraft] = useState<{ name: string; crop: string; area: string; health: number; status: string } | null>(null);
   const selectedZone = selectedZoneId != null ? zones.find(z => z.id === selectedZoneId) : null;
   const selectedDetail = selectedZoneId != null ? ZONE_DETAIL_DATA[selectedZoneId] || ZONE_DETAIL_DATA[1] : null;
 
@@ -1504,10 +1505,20 @@ function ZonesScreen() {
     const rows = await response.json();
     setZones(rows.map((area: any) => {
       const existing = ZONES.find(zone => zone.id === area.area_id);
-      return existing ? { ...existing, name: area.area_name, crop: area.crop_type, area: area.location || existing.area } : {
+      return existing ? {
+        ...existing,
+        name: area.area_name,
+        crop: area.crop_type,
+        area: area.location || existing.area,
+        health: Number(area.health_score ?? existing.health),
+        status: area.ui_status || existing.status,
+        planted: area.planted_date || existing.planted,
+        harvest: area.harvest_date || existing.harvest,
+      } : {
         id: area.area_id, name: area.area_name, crop: area.crop_type, area: area.location || "Chưa cập nhật",
-        planted: "Mới tạo", harvest: "Chưa xác định", health: 100, sensors: 0,
-        status: area.status === "active" ? "good" : "warning",
+        planted: area.planted_date || "Mới tạo", harvest: area.harvest_date || "Chưa xác định",
+        health: Number(area.health_score ?? 100), sensors: 0,
+        status: area.ui_status || (area.status === "active" ? "good" : "warning"),
       };
     }));
   };
@@ -1521,7 +1532,7 @@ function ZonesScreen() {
     if (!crop_type) return;
     const location = window.prompt("Vị trí hoặc diện tích khu trồng:", "20 m²")?.trim() || "Chưa cập nhật";
     const description = window.prompt("Mô tả khu vực:", `Khu trồng ${crop_type}`)?.trim() || "";
-    const response = await fetch(`${apiUrl}/area`, { method: "POST", headers: apiHeaders(), body: JSON.stringify({ area_name, crop_type, location, description, status: "active" }) });
+    const response = await fetch(`${apiUrl}/area`, { method: "POST", headers: apiHeaders(), body: JSON.stringify({ area_name, crop_type, location, description, status: "active", ui_status: "good", health_score: 100 }) });
     const result = await response.json();
     if (!response.ok) return window.alert(result.message || "Không thể thêm khu vực");
     await loadZones();
@@ -1583,7 +1594,7 @@ function ZonesScreen() {
               </div>
               <div className="flex gap-2">
                 <button onClick={e => { e.stopPropagation(); setDrawerMode("detail"); setSelectedZoneId(z.id); }} className="flex-1 text-xs py-2 rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50 font-medium transition-colors">Chi tiết</button>
-                <button onClick={e => { e.stopPropagation(); setDrawerMode("manage"); setSelectedZoneId(z.id); }} className="flex-1 text-xs py-2 rounded-xl font-semibold text-white hover:opacity-90 transition-opacity" style={{ background: "#2E7D32" }}>Quản lý</button>
+                <button onClick={e => { e.stopPropagation(); setManageDraft({ name: z.name, crop: z.crop, area: z.area, health: z.health, status: z.status }); setDrawerMode("manage"); setSelectedZoneId(z.id); }} className="flex-1 text-xs py-2 rounded-xl font-semibold text-white hover:opacity-90 transition-opacity" style={{ background: "#2E7D32" }}>Quản lý</button>
               </div>
             </div>
           );
@@ -1593,9 +1604,10 @@ function ZonesScreen() {
       {/* Inline slide-in drawer */}
       {selectedZoneId != null && selectedZone && selectedDetail && (() => {
         const z = selectedZone;
+        const displayZone = drawerMode === "manage" && manageDraft ? { ...z, ...manageDraft } : z;
         const detail = selectedDetail;
-        const healthColor = z.health >= 80 ? "#2E7D32" : z.health >= 65 ? "#D97706" : "#EF4444";
-        const statusColor = { good: { bg: "#DCFCE7", color: "#166534", label: "Tốt" }, warning: { bg: "#FEF3C7", color: "#D97706", label: "Cần chú ý" }, danger: { bg: "#FEE2E2", color: "#DC2626", label: "Nguy hiểm" } }[z.status] || { bg: "#F3F4F6", color: "#6B7280", label: "—" };
+        const healthColor = displayZone.health >= 80 ? "#2E7D32" : displayZone.health >= 65 ? "#D97706" : "#EF4444";
+        const statusColor = { good: { bg: "#DCFCE7", color: "#166534", label: "Tốt" }, warning: { bg: "#FEF3C7", color: "#D97706", label: "Cần chú ý" }, danger: { bg: "#FEE2E2", color: "#DC2626", label: "Nguy hiểm" } }[displayZone.status] || { bg: "#F3F4F6", color: "#6B7280", label: "—" };
         const stageIdx = GROWTH_STAGES.indexOf(detail.growthStage);
         return (
           <>
@@ -1614,8 +1626,8 @@ function ZonesScreen() {
               </div>
 
               <div className="p-6 space-y-5">
-                {drawerMode === "manage" && <form className="bg-green-50 rounded-2xl p-5 border border-green-100 space-y-4" onSubmit={async (event) => { event.preventDefault(); const data = new FormData(event.currentTarget); const uiStatus = String(data.get("status")); const response = await fetch(`${apiUrl}/area/${z.id}`, { method: "PUT", headers: apiHeaders(), body: JSON.stringify({ area_name: String(data.get("name")), crop_type: String(data.get("crop")), location: String(data.get("area")), status: uiStatus === "good" ? "active" : "maintenance" }) }); const result = await response.json(); if (!response.ok) return window.alert(result.message || "Không thể lưu khu vực"); await loadZones(); window.alert("Đã lưu thông tin khu vực"); }}>
-                  <div className="grid grid-cols-2 gap-3"><label className="text-xs font-semibold text-gray-600">Tên khu vực<input name="name" defaultValue={z.name} className="mt-1 w-full bg-white border rounded-xl px-3 py-2 text-sm"/></label><label className="text-xs font-semibold text-gray-600">Loại cây<input name="crop" defaultValue={z.crop} className="mt-1 w-full bg-white border rounded-xl px-3 py-2 text-sm"/></label><label className="text-xs font-semibold text-gray-600">Diện tích<input name="area" defaultValue={z.area} className="mt-1 w-full bg-white border rounded-xl px-3 py-2 text-sm"/></label><label className="text-xs font-semibold text-gray-600">Trạng thái<select name="status" defaultValue={z.status} className="mt-1 w-full bg-white border rounded-xl px-3 py-2 text-sm"><option value="good">Tốt</option><option value="warning">Cần chú ý</option><option value="danger">Nguy hiểm</option></select></label></div>
+                {drawerMode === "manage" && manageDraft && <form className="bg-green-50 rounded-2xl p-5 border border-green-100 space-y-4" onSubmit={async (event) => { event.preventDefault(); const response = await fetch(`${apiUrl}/area/${z.id}`, { method: "PUT", headers: apiHeaders(), body: JSON.stringify({ area_name: manageDraft.name, crop_type: manageDraft.crop, location: manageDraft.area, status: manageDraft.status === "good" ? "active" : "maintenance", ui_status: manageDraft.status, health_score: manageDraft.health }) }); const result = await response.json(); if (!response.ok) return window.alert(result.message || "Không thể lưu khu vực"); setZones(rows => rows.map(item => item.id === z.id ? { ...item, name: result.area_name, crop: result.crop_type, area: result.location, health: Number(result.health_score), status: result.ui_status } : item)); window.alert("Đã lưu và cập nhật số liệu tổng quan"); }}>
+                  <div className="grid grid-cols-2 gap-3"><label className="text-xs font-semibold text-gray-600">Tên khu vực<input name="name" value={manageDraft.name} onChange={event => setManageDraft({ ...manageDraft, name: event.target.value })} className="mt-1 w-full bg-white border rounded-xl px-3 py-2 text-sm"/></label><label className="text-xs font-semibold text-gray-600">Loại cây<input name="crop" value={manageDraft.crop} onChange={event => setManageDraft({ ...manageDraft, crop: event.target.value })} className="mt-1 w-full bg-white border rounded-xl px-3 py-2 text-sm"/></label><label className="text-xs font-semibold text-gray-600">Diện tích<input name="area" value={manageDraft.area} onChange={event => setManageDraft({ ...manageDraft, area: event.target.value })} className="mt-1 w-full bg-white border rounded-xl px-3 py-2 text-sm"/></label><label className="text-xs font-semibold text-gray-600">Sức khỏe (%)<input name="health" type="number" min="0" max="100" value={manageDraft.health} onChange={event => { const health = Math.max(0, Math.min(100, Number(event.target.value))); setManageDraft({ ...manageDraft, health, status: health >= 80 ? "good" : health >= 65 ? "warning" : "danger" }); }} className="mt-1 w-full bg-white border rounded-xl px-3 py-2 text-sm"/></label><label className="text-xs font-semibold text-gray-600 col-span-2">Trạng thái tự động<select name="status" value={manageDraft.status} disabled className="mt-1 w-full bg-gray-100 border rounded-xl px-3 py-2 text-sm text-gray-600"><option value="good">Tốt (80–100%)</option><option value="warning">Cần chú ý (65–79%)</option><option value="danger">Nguy hiểm (0–64%)</option></select></label></div>
                   <div className="flex gap-3"><button type="submit" className="flex-1 py-2.5 rounded-xl bg-green-700 text-white text-sm font-semibold">Lưu thay đổi</button><button type="button" onClick={() => { if (window.confirm(`Xóa ${z.name}?`)) { setZones(rows => rows.filter(item => item.id !== z.id)); setSelectedZoneId(null); } }} className="px-5 py-2.5 rounded-xl bg-red-50 text-red-600 text-sm font-semibold">Xóa khu vực</button></div>
                 </form>}
                 {/* Hero */}
@@ -1623,15 +1635,15 @@ function ZonesScreen() {
                   <div className="flex items-center justify-between mb-3">
                     <span className="text-sm font-bold px-3 py-1 rounded-full" style={{ background: statusColor.bg, color: statusColor.color }}>{statusColor.label}</span>
                     <div className="text-right">
-                      <div className="text-2xl font-extrabold" style={{ color: healthColor }}>{z.health}%</div>
+                      <div className="text-2xl font-extrabold" style={{ color: healthColor }}>{displayZone.health}%</div>
                       <div className="text-xs text-gray-400">Sức khỏe</div>
                     </div>
                   </div>
                   <div className="h-2.5 bg-gray-200 rounded-full mb-4">
-                    <div className="h-full rounded-full" style={{ width: `${z.health}%`, background: healthColor }} />
+                    <div className="h-full rounded-full" style={{ width: `${displayZone.health}%`, background: healthColor }} />
                   </div>
                   <div className="grid grid-cols-2 gap-2">
-                    {[{ label: "Diện tích", value: z.area }, { label: "Cảm biến", value: `${z.sensors} cảm biến` }, { label: "Ngày trồng", value: detail.startDate }, { label: "Thu hoạch DK", value: detail.harvestDate }].map(({ label, value }) => (
+                    {[{ label: "Diện tích", value: displayZone.area }, { label: "Cảm biến", value: `${displayZone.sensors} cảm biến` }, { label: "Ngày trồng", value: detail.startDate }, { label: "Thu hoạch DK", value: detail.harvestDate }].map(({ label, value }) => (
                       <div key={label} className="bg-white rounded-xl p-3">
                         <div className="text-xs text-gray-400">{label}</div>
                         <div className="text-sm font-bold text-gray-800 mt-0.5">{value}</div>

@@ -32,6 +32,16 @@ export async function connectDatabase() {
   if (!isSqlMode()) return null;
   if (pool?.connected) return pool;
   pool = await sql.connect(config.db);
+  await pool.request().query(`
+    IF COL_LENGTH('HydroponicArea', 'ui_status') IS NULL
+      ALTER TABLE HydroponicArea ADD ui_status VARCHAR(20) NULL;
+    IF COL_LENGTH('HydroponicArea', 'health_score') IS NULL
+      ALTER TABLE HydroponicArea ADD health_score INT NULL;
+    IF COL_LENGTH('HydroponicArea', 'planted_date') IS NULL
+      ALTER TABLE HydroponicArea ADD planted_date NVARCHAR(30) NULL;
+    IF COL_LENGTH('HydroponicArea', 'harvest_date') IS NULL
+      ALTER TABLE HydroponicArea ADD harvest_date NVARCHAR(30) NULL;
+  `);
   console.log(`[database] Connected to ${config.db.database}`);
   return pool;
 }
@@ -151,8 +161,10 @@ export async function persistArea(area) {
     await saveMemoryAreas([...store.areas.filter((item) => item.area_id !== area.area_id), area]);
     return;
   }
-  const result = await query(`INSERT INTO HydroponicArea(area_name,location,crop_type,description,status)
-    OUTPUT INSERTED.area_id VALUES(@area_name,@location,@crop_type,@description,@status)`, area);
+  const result = await query(`INSERT INTO HydroponicArea(area_name,location,crop_type,description,status,
+    ui_status,health_score,planted_date,harvest_date)
+    OUTPUT INSERTED.area_id VALUES(@area_name,@location,@crop_type,@description,@status,
+    @ui_status,@health_score,@planted_date,@harvest_date)`, area);
   area.area_id = Number(result.recordset[0].area_id);
 }
 
@@ -162,7 +174,8 @@ export async function updatePersistedArea(area) {
     return;
   }
   await query(`UPDATE HydroponicArea SET area_name=@area_name,location=@location,crop_type=@crop_type,
-    description=@description,status=@status WHERE area_id=@area_id`, area);
+    description=@description,status=@status,ui_status=@ui_status,health_score=@health_score,
+    planted_date=@planted_date,harvest_date=@harvest_date WHERE area_id=@area_id`, area);
 }
 
 export async function persistThreshold(threshold) {
