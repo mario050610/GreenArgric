@@ -24,6 +24,8 @@ while True:
             'type': 'status',
             'request_id': command.get('request_id'),
             'device': device,
+            'device_code': command.get('device_code'),
+            'area_id': AREA_ID,
             'state': get_state(device),
             'ok': ok,
             'uptime_ms': now,

@@ -6,6 +6,7 @@ import { allowRoles } from '../middleware/auth.js';
 
 const router = Router();
 const roles = new Set(['admin', 'owner', 'technician']);
+const creatableRoles = new Set(['owner', 'technician']);
 const statuses = new Set(['active', 'locked', 'inactive']);
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -15,6 +16,7 @@ const publicUser = (user) => ({
   full_name: user.full_name,
   email: user.email,
   status: user.status,
+  created_at: user.created_at || null,
   role: store.roles.find((role) => role.role_id === user.role_id)?.role_name,
 });
 
@@ -51,10 +53,13 @@ router.post('/', allowRoles('admin'), async (req, res) => {
   if (fullName.length < 2) return res.status(400).json({ message: 'Họ tên phải có ít nhất 2 ký tự' });
   if (!emailPattern.test(email)) return res.status(400).json({ message: 'Email không hợp lệ' });
   if (password.length < 6) return res.status(400).json({ message: 'Mật khẩu phải có ít nhất 6 ký tự' });
-  if (!roles.has(roleName)) return res.status(400).json({ message: 'Vai trò không hợp lệ' });
+  if (!creatableRoles.has(roleName)) return res.status(400).json({ message: 'Chỉ được tạo tài khoản chủ vườn hoặc kỹ thuật viên' });
   if (!statuses.has(status)) return res.status(400).json({ message: 'Trạng thái không hợp lệ' });
   if (store.users.some((item) => item.email.toLowerCase() === email)) {
     return res.status(409).json({ message: 'Email đã tồn tại' });
+  }
+  if (store.users.some((item) => item.full_name.trim().toLowerCase() === fullName.toLowerCase())) {
+    return res.status(409).json({ message: 'Tên tài khoản đã tồn tại' });
   }
 
   const role = store.roles.find((item) => item.role_name === roleName);
@@ -65,6 +70,7 @@ router.post('/', allowRoles('admin'), async (req, res) => {
     email,
     password_hash: await bcrypt.hash(password, 10),
     status,
+    created_at: new Date().toISOString(),
   };
   await persistUser(item);
   store.users.push(item);

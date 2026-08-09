@@ -1,4 +1,21 @@
 @import 'tailwindcss' source(none);
+
+/* Khung Trung tâm tin nhắn: chỉ vùng hội thoại cuộn, tiêu đề và ô nhập luôn cố định. */
+.min-h-\[680px\] {
+  grid-template-columns: 260px minmax(0, 1fr) !important;
+  height: calc(100vh - 160px) !important;
+  min-height: 580px !important;
+  max-height: none !important;
+}
+
+.min-h-\[680px\] > aside {
+  overflow-y: auto;
+}
+
+.min-h-\[680px\] > section {
+  min-height: 0;
+  overflow: hidden;
+}
 @source '../**/*.{js,ts,jsx,tsx}';
 
 @import 'tw-animate-css';
