@@ -114,6 +114,74 @@ function answerDirectoryQuestion(question) {
   return `Hệ thống có ${users.length} ${roleLabel.toLowerCase()}: ${users.map((user) => `${user.name} (${user.email}, ${user.status === 'active' ? 'đang hoạt động' : user.status})`).join('; ')}.`;
 }
 
+const sensorLabels = {
+  temperature: 'Nhiệt độ', humidity: 'Độ ẩm', ph: 'pH', ec: 'EC',
+  light: 'Ánh sáng', water_level: 'Mực nước',
+};
+
+const latestReading = (areaId, sensorType) => store.readings
+  .filter((item) => item.area_id === areaId && store.sensors.find((sensor) => sensor.sensor_id === item.sensor_id)?.sensor_type === sensorType)
+  .sort((a, b) => new Date(b.reading_time) - new Date(a.reading_time))[0];
+
+export function answerSystemDataQuestion(question, currentUser) {
+  const normalized = normalizeVietnamese(question);
+  // Chỉ xem "Khu A/B/C" là mã khu; không nhầm chữ đầu của "khu vực" thành mã.
+  const areaMatch = normalized.match(/\bkhu\s*([a-z])\b/i);
+  const selectedAreas = areaMatch
+    ? store.areas.filter((area) => normalizeVietnamese(area.area_name) === `khu ${areaMatch[1]}`)
+    : store.areas;
+
+  if (/(khu vuc|khu trong|vuon hom nay|tinh hinh.*vuon|tong quan.*vuon)/.test(normalized)) {
+    return selectedAreas.map((area) => {
+      const readings = ['temperature', 'humidity', 'ph', 'ec', 'water_level']
+        .map((type) => latestReading(area.area_id, type))
+        .filter(Boolean)
+        .map((reading) => `${sensorLabels[store.sensors.find((sensor) => sensor.sensor_id === reading.sensor_id)?.sensor_type] || 'Chỉ số'} ${reading.value} ${reading.unit}`);
+      const openAlerts = store.alerts.filter((alert) => alert.area_id === area.area_id && alert.status === 'open');
+      return `- ${area.area_name}: trồng ${area.crop_type}, trạng thái ${area.status === 'active' ? 'đang hoạt động' : 'đang bảo trì'}; ${readings.length ? readings.join(', ') : 'chưa có dữ liệu cảm biến'}; ${openAlerts.length ? `${openAlerts.length} cảnh báo đang mở (${openAlerts.map((alert) => alert.title).join(', ')})` : 'không có cảnh báo đang mở'}.`;
+    }).join('\n');
+  }
+
+  if (/(cam bien|nhiet do|do am|muc nuoc|anh sang|\bph\b|\bec\b|chi so moi truong)/.test(normalized)) {
+    const requestedTypes = Object.keys(sensorLabels).filter((type) => {
+      const aliases = { temperature: 'nhiet do', humidity: 'do am', water_level: 'muc nuoc', light: 'anh sang', ph: 'ph', ec: 'ec' };
+      return normalized.includes(aliases[type]);
+    });
+    const types = requestedTypes.length ? requestedTypes : Object.keys(sensorLabels);
+    return selectedAreas.map((area) => {
+      const values = types.map((type) => latestReading(area.area_id, type)).filter(Boolean)
+        .map((reading) => `${sensorLabels[store.sensors.find((sensor) => sensor.sensor_id === reading.sensor_id)?.sensor_type]} ${reading.value} ${reading.unit}`);
+      return `- ${area.area_name}: ${values.length ? values.join(', ') : 'chưa có dữ liệu phù hợp'}.`;
+    }).join('\n');
+  }
+
+  if (/(thiet bi|may bom|den led|quat|bom cham)/.test(normalized)) {
+    const devices = store.devices.filter((device) => !areaMatch || selectedAreas.some((area) => area.area_id === device.area_id));
+    return devices.length ? devices.map((device) => `- ${device.device_name}: ${device.status === 'ON' ? 'đang bật' : 'đang tắt'}, chế độ ${device.mode === 'AUTO' ? 'tự động' : 'thủ công'}, ${store.areas.find((area) => area.area_id === device.area_id)?.area_name}.`).join('\n') : 'Chưa có thiết bị phù hợp trong hệ thống.';
+  }
+
+  if (/(canh bao|bat thuong|su co)/.test(normalized)) {
+    const alerts = store.alerts.filter((alert) => alert.status === 'open' && (!areaMatch || selectedAreas.some((area) => area.area_id === alert.area_id)));
+    return alerts.length ? alerts.map((alert) => `- ${store.areas.find((area) => area.area_id === alert.area_id)?.area_name}: ${alert.title}; ${alert.message}; mức ${alert.severity === 'high' ? 'cao' : alert.severity === 'medium' ? 'trung bình' : 'thấp'}.`).join('\n') : 'Hiện không có cảnh báo đang mở.';
+  }
+
+  if (/(cong viec|bao tri|nhiem vu|lich lam)/.test(normalized)) {
+    const tasks = store.tasks.filter((task) => currentUser.role !== 'technician' || task.assigned_to === currentUser.id);
+    return tasks.length ? tasks.map((task) => `- ${task.title}: ${task.description}, ${store.areas.find((area) => area.area_id === task.area_id)?.area_name}, trạng thái ${task.status === 'pending' ? 'chờ xử lý' : task.status}, phụ trách ${store.users.find((user) => user.user_id === task.assigned_to)?.full_name}.`).join('\n') : 'Tài khoản của bạn hiện không có công việc được giao.';
+  }
+
+  if (/(nguong|cau hinh nguong)/.test(normalized)) {
+    const thresholds = store.thresholds.filter((item) => !areaMatch || selectedAreas.some((area) => area.area_id === item.area_id));
+    return thresholds.length ? thresholds.map((item) => `- ${store.areas.find((area) => area.area_id === item.area_id)?.area_name} - ${sensorLabels[item.sensor_type] || item.sensor_type}: từ ${item.min_value} đến ${item.max_value}, ${item.is_activated ? 'đang áp dụng' : 'đang tắt'}.`).join('\n') : 'Chưa có cấu hình ngưỡng phù hợp.';
+  }
+
+  if (/(tai khoan cua toi|thong tin cua toi|ho so cua toi|toi la ai)/.test(normalized)) {
+    const user = store.users.find((item) => item.user_id === currentUser.id);
+    return user ? `Tài khoản của bạn: ${user.full_name}, email ${user.email}, vai trò ${currentUser.role === 'admin' ? 'quản trị viên' : currentUser.role === 'owner' ? 'chủ vườn' : 'kỹ thuật viên'}, trạng thái ${user.status === 'active' ? 'đang hoạt động' : user.status}.` : null;
+  }
+  return null;
+}
+
 router.post('/chat', async (req, res) => {
   const message = String(req.body.message || '').trim();
   const history = (Array.isArray(req.body.history) ? req.body.history : [])
@@ -129,6 +197,8 @@ router.post('/chat', async (req, res) => {
   const directoryAnswer = answerDirectoryQuestion(message);
   // Danh bạ là dữ liệu nội bộ của GREEN ARGRIC, không gắn nguồn web không liên quan.
   if (directoryAnswer) return res.json({ reply: formatPlainAnswer(directoryAnswer), provider: 'system', source: 'users', sources: [] });
+  const systemDataAnswer = answerSystemDataQuestion(message, req.user);
+  if (systemDataAnswer) return res.json({ reply: formatPlainAnswer(systemDataAnswer), provider: 'system', source: 'green-argric-data', sources: [] });
   const webSources = await searchWebSources(message);
   if (!webSources.length) return res.status(503).json({ message: config.ai.tavilyApiKey ? 'Chưa tìm được bài viết phù hợp để kiểm chứng câu trả lời. Bạn hãy mô tả câu hỏi cụ thể hơn.' : 'Chưa cấu hình TAVILY_API_KEY nên trợ lý không thể tìm nguồn kiểm chứng.', code: 'VERIFIED_SOURCE_UNAVAILABLE' });
   const systemContext = {
