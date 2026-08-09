@@ -6,6 +6,25 @@ const router = Router();
 
 const normalizeVietnamese = (value) => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase();
 
+export const isRecipeQuestion = (question) => {
+  const normalized = normalizeVietnamese(question);
+  const cookingContext = /(nau|lam mon|che bien|nguyen lieu|so che|hap|luoc|xao|chien|ran|nuong|kho|canh|mon an)/.test(normalized);
+  return /(cach nau|cach lam mon|che bien)/.test(normalized)
+    || (normalized.includes('cong thuc') && cookingContext);
+};
+
+export const isInternalSystemQuestion = (question) => {
+  const normalized = normalizeVietnamese(question);
+  const explicitSystemContext = /(green argric|trong he thong|tren giao dien|du lieu noi bo|cua toi|vuon toi|tai khoan toi|tai khoan cua toi)/.test(normalized);
+  const areaContext = /\bkhu\s*[a-l]\b|khu vuc trong|khu trong|vuon hom nay|tinh hinh.*vuon|tong quan.*vuon/.test(normalized);
+  const operationalContext = /(trang thai|chi so|dang bat|dang tat|canh bao|nguong|lich hen|bao tri|nhiem vu|lich lam)/.test(normalized)
+    && /(thiet bi|cam bien|may bom|den|quat|vuon|khu|cong viec)/.test(normalized);
+  const assignedServiceContext = /(ky thuat vien|ktv|ai).*(se den sua|den sua|sua chua|bao tri|se thuc hien)/.test(normalized);
+  const directoryContext = /(can lien he ai|thong tin lien he|danh sach|co nhung ai|gom nhung ai|bao nhieu|ten gi|ai quan ly)/.test(normalized)
+    && /(quan tri vien|admin|chu vuon|owner|ky thuat vien|technician|ktv|khu)/.test(normalized);
+  return explicitSystemContext || areaContext || operationalContext || assignedServiceContext || directoryContext;
+};
+
 export function compactRecipeSource(value) {
   let text = String(value || '').normalize('NFC').replace(/\r/g, '');
   text = text
@@ -81,7 +100,9 @@ async function searchWebSources(question) {
   if (!config.ai.tavilyApiKey) return [];
   const normalized = normalizeVietnamese(question);
   const healthQuestion = /(suc khoe|benh|tao bon|tre em|em be|dinh duong|vitamin|thuoc|trieu chung)/.test(normalized);
-  const recipeQuestion = /(cach nau|cach lam|cong thuc|che bien)/.test(normalized);
+  // "Công thức" cũng được dùng trong toán, hóa học... nên chỉ xem là món ăn
+  // khi câu hỏi thực sự có ngữ cảnh nấu/chế biến hoặc nguyên liệu, món ăn.
+  const recipeQuestion = isRecipeQuestion(question);
   const asksForExplanation = /(tai sao|vi sao|tu dau ma ra|nguyen nhan|do dau)/.test(normalized);
   const farmingQuestion = /(trong|gieo|phan bon|cham soc|thu hoach|sau benh)/.test(normalized);
   const cropMatch = normalized.match(/\b(?:trong|gieo|cham soc|thu hoach)\s+([a-z0-9 ]{3,40})/);
@@ -97,6 +118,8 @@ async function searchWebSources(question) {
         ? `"${question}" hướng dẫn kỹ thuật nông nghiệp`
         : /(khi nao|dieu kien|truong hop)/.test(normalized)
           ? `${question} điều kiện cần và đủ tất cả trường hợp`
+          : /(la gi|cong thuc|ky hieu|ten khoa hoc|bao nhieu|ai la)/.test(normalized)
+            ? `"${question}" định nghĩa chính xác trả lời bằng tiếng Việt`
           : question;
   const attempts = [
     { query: expandedQuery, search_depth: 'advanced' },
@@ -108,7 +131,6 @@ async function searchWebSources(question) {
     try {
       const requestBody = { ...attempt, max_results: 6, include_answer: true, include_raw_content: true };
       delete requestBody.trustedRecipe;
-      if (healthQuestion && attempt.search_depth === 'advanced') requestBody.include_domains = ['vinmec.com', 'medlatec.vn', 'tamanhhospital.vn', 'hellobacsi.com'];
       if (recipeQuestion && attempt.trustedRecipe) requestBody.include_domains = ['dienmayxanh.com', 'cet.edu.vn', 'huongnghiepaau.com', 'daotaobeptruong.vn', 'monngonmoingay.com'];
       const response = await fetch(config.ai.tavilySearchUrl, {
         method: 'POST',
@@ -120,9 +142,13 @@ async function searchWebSources(question) {
       const result = await response.json();
       const searchSummary = String(result.answer || '').trim().slice(0, 1400);
       const sources = (result.results || []).map((source, index) => {
+        const snippet = String(source.content || '').trim();
+        const rawContent = String(source.raw_content || '').trim();
+        // Đoạn trích của công cụ tìm kiếm thường chứa đúng phần trả lời, còn đầu
+        // HTML thô có thể chỉ là menu. Giữ đoạn trích trước rồi mới bổ sung nội dung.
         const sourceText = recipeQuestion
-          ? compactRecipeSource(source.raw_content || source.content || '')
-          : String(source.raw_content || source.content || '').trim().slice(0, 1800);
+          ? compactRecipeSource(rawContent || snippet)
+          : `${snippet}${rawContent && rawContent !== snippet ? `\n${rawContent}` : ''}`.trim().slice(0, 2600);
         return { title: String(source.title || '').trim().slice(0, 240), url: String(source.url || '').trim(), description: sourceText, summary: index === 0 ? searchSummary : '', score: Number(source.score || 0) };
       }).filter((source) => {
         try {
@@ -149,7 +175,8 @@ async function searchWebSources(question) {
 
 export function selectSourcesForQuestion(question, sources) {
   const normalized = normalizeVietnamese(question);
-  if (/(cach nau|cach lam|cong thuc|che bien)/.test(normalized)) return sources.slice(0, 1);
+  const recipeQuestion = isRecipeQuestion(question);
+  if (recipeQuestion) return sources.slice(0, 1);
   if (/(suc khoe|benh|tao bon|tre em|em be|dinh duong|vitamin|thuoc|trieu chung)/.test(normalized)) return sources.slice(0, 3);
   if (/(trong|gieo|phan bon|cham soc|thu hoach|sau benh)/.test(normalized)) return sources.slice(0, 1);
   return sources.slice(0, 3);
@@ -158,10 +185,18 @@ export function selectSourcesForQuestion(question, sources) {
 const foreignScriptPattern = /[\u0370-\u052F\u0590-\u0E7F\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uAC00-\uD7AF\uF900-\uFAFF]/u;
 const foreignScriptGlobalPattern = /[\u0370-\u052F\u0590-\u0E7F\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uAC00-\uD7AF\uF900-\uFAFF]/gu;
 const containsForeignScript = (value) => foreignScriptPattern.test(String(value || ''));
+export const isPredominantlyEnglish = (value) => {
+  const words = String(value || '').toLowerCase().match(/[a-z]+/g) || [];
+  const englishMarkers = new Set(['the', 'is', 'are', 'of', 'to', 'and', 'in', 'for', 'with', 'from', 'that', 'this', 'when', 'which', 'can', 'will', 'has', 'have']);
+  const vietnameseMarkers = new Set(['là', 'của', 'và', 'trong', 'cho', 'với', 'được', 'khi', 'có', 'không', 'này', 'những', 'từ']);
+  const englishCount = words.filter((word) => englishMarkers.has(word)).length;
+  const vietnameseCount = String(value || '').toLowerCase().split(/\s+/).filter((word) => vietnameseMarkers.has(word.replace(/[^\p{L}]/gu, ''))).length;
+  return englishCount >= 3 && englishCount > vietnameseCount * 1.5;
+};
 
 async function requestOllama(messages, verificationContext = {}) {
   const call = async (requestMessages) => {
-    const response = await fetch(`${config.ai.ollamaUrl}/api/chat`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: config.ai.ollamaModel, messages: requestMessages, stream: false, keep_alive: '5m', options: { temperature: 0.05, top_p: 0.8, repeat_penalty: 1.08, num_ctx: 8192 } }) });
+    const response = await fetch(`${config.ai.ollamaUrl}/api/chat`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: config.ai.ollamaModel, messages: requestMessages, stream: false, think: false, keep_alive: '5m', options: { temperature: 0.05, top_p: 0.8, repeat_penalty: 1.08, num_ctx: 8192 } }) });
     const result = await response.json();
     return { response, result };
   };
@@ -184,6 +219,15 @@ async function requestOllama(messages, verificationContext = {}) {
     if (containsForeignScript(output.result.message?.content)) {
       output.result.message.content = String(output.result.message.content).replace(foreignScriptGlobalPattern, '').replace(/[ \t]{2,}/g, ' ');
     }
+    if (isPredominantlyEnglish(output.result.message?.content)) {
+      const translated = await call([
+        { role: 'system', content: 'Bạn là biên tập viên tiếng Việt. Chỉ xuất câu trả lời bằng tiếng Việt tự nhiên. Giữ nguyên công thức, ký hiệu, số liệu, tên riêng và thuật ngữ không có bản dịch phù hợp. Không thêm dữ kiện, không dùng Markdown và không giải thích quá trình dịch.' },
+        { role: 'user', content: `Câu hỏi: ${verificationContext.question || ''}\n\nNguồn kiểm chứng:\n${JSON.stringify(verificationContext.sources || [])}\n\nHãy chuyển câu trả lời sau sang tiếng Việt, giữ nguyên ý nghĩa và dữ kiện:\n${output.result.message?.content || ''}` },
+      ]);
+      const translatedText = String(translated.result?.message?.content || '').trim();
+      if (translated.response.ok && translatedText && !isPredominantlyEnglish(translatedText)) output = translated;
+      else output.result.message.content = 'Chưa thể tạo câu trả lời hoàn toàn bằng tiếng Việt từ các nguồn hiện có.';
+    }
   }
   return output;
 }
@@ -195,6 +239,7 @@ async function requestSimpleGroundedAnswer(question, sources) {
     body: JSON.stringify({
       model: config.ai.ollamaModel,
       stream: false,
+      think: false,
       keep_alive: '5m',
       options: { temperature: 0.1, top_p: 0.85, num_ctx: 4096 },
       messages: [
@@ -222,6 +267,7 @@ async function requestCompleteGroundedAnswer(question, sources) {
     body: JSON.stringify({
       model: config.ai.ollamaModel,
       stream: false,
+      think: false,
       keep_alive: '5m',
       options: { temperature: 0.05, top_p: 0.8, num_ctx: 8192 },
       messages: [
@@ -256,7 +302,7 @@ const scopeExclusions = {
 export function enforceQuestionScope(question, answer) {
   const normalizedQuestion = normalizeVietnamese(question);
   const scope = /\brau\s+(gi|nao|nào|gì|nhiều|chứa|có)\b/.test(normalizedQuestion) ? 'vegetable' : null;
-  const recipeQuestion = /(cach nau|cach lam|cong thuc|che bien)/.test(normalizedQuestion);
+  const recipeQuestion = isRecipeQuestion(question);
   let keptLines = repairVietnameseExtraction(answer).split('\n');
   const recipeHeadingCount = keptLines.filter((line) => /^(?:-\s*)?(nguyên liệu|sơ chế|các bước thực hiện)\s*:/iu.test(line.trim())).length;
   if (!recipeQuestion && recipeHeadingCount >= 2) return 'Chưa có đủ nguồn phù hợp để trả lời chính xác câu hỏi này.';
@@ -267,8 +313,7 @@ export function enforceQuestionScope(question, answer) {
 }
 
 export function validateRecipeAgainstSource(question, answer, source) {
-  const normalizedQuestion = normalizeVietnamese(question);
-  if (!/(cach nau|cach lam|cong thuc|che bien)/.test(normalizedQuestion)) return answer;
+  if (!isRecipeQuestion(question)) return answer;
   const sourceText = normalizeVietnamese(`${source?.title || ''}\n${source?.description || ''}`);
   if (sourceText.length < 500) return 'Chưa có đủ nguồn phù hợp để trả lời chính xác câu hỏi này.';
 
@@ -318,7 +363,7 @@ export function validateRecipeAgainstSource(question, answer, source) {
 }
 
 export function answerStructuredRecipe(question, source) {
-  if (!/(cach nau|cach lam|cong thuc|che bien)/.test(normalizeVietnamese(question))) return null;
+  if (!isRecipeQuestion(question)) return null;
   const text = String(source?.description || '');
   const section = (startPattern, endPattern) => {
     const start = text.search(startPattern);
@@ -565,13 +610,14 @@ router.post('/chat', async (req, res) => {
       content: String(item.content).replace(/\n+(?:Nguồn tham khảo đã đối chiếu|Tham khảo thêm tại link):[\s\S]*$/i, '').trim().slice(0, 1600),
     }));
   if (!message) return res.status(400).json({ message: 'Nội dung câu hỏi là bắt buộc' });
-  const directoryAnswer = answerDirectoryQuestion(message, req.user);
-  // Danh bạ là dữ liệu nội bộ của GREEN ARGRIC, không gắn nguồn web không liên quan.
-  if (directoryAnswer) return res.json({ reply: formatPlainAnswer(directoryAnswer), provider: 'system', source: 'users', sources: [] });
-  const systemDataAnswer = answerSystemDataQuestion(message, req.user);
-  if (systemDataAnswer) return res.json({ reply: formatPlainAnswer(systemDataAnswer), provider: 'system', source: 'green-argric-data', sources: [] });
-  const normalizedMessage = normalizeVietnamese(message);
-  if (/(green argric|khu vuc|khu trong|chu vuon|ky thuat vien|quan tri vien|thiet bi|cam bien|canh bao|cong viec|bao tri|lich hen|tai khoan|nguong)/.test(normalizedMessage)) {
+  const continuesInternalConversation = isFollowUpQuestion(message)
+    && history.some((item) => isInternalSystemQuestion(item.content));
+  if (isInternalSystemQuestion(message) || continuesInternalConversation) {
+    const directoryAnswer = answerDirectoryQuestion(message, req.user);
+    // Danh bạ là dữ liệu nội bộ của GREEN ARGRIC, không gắn nguồn web không liên quan.
+    if (directoryAnswer) return res.json({ reply: formatPlainAnswer(directoryAnswer), provider: 'system', source: 'users', sources: [] });
+    const systemDataAnswer = answerSystemDataQuestion(message, req.user);
+    if (systemDataAnswer) return res.json({ reply: formatPlainAnswer(systemDataAnswer), provider: 'system', source: 'green-argric-data', sources: [] });
     return res.json({ reply: 'Chưa có dữ liệu nội bộ phù hợp để trả lời câu hỏi này.', provider: 'system', source: 'green-argric-data', sources: [] });
   }
   const webSources = selectSourcesForQuestion(message, await searchWebSources(message));
@@ -600,7 +646,10 @@ verifiedWebSources: ${JSON.stringify(webSources)}`;
           reply = validateRecipeAgainstSource(message, reply, webSources[0]);
         }
       }
-      if (/^Chưa có đủ nguồn phù hợp/i.test(reply) && webSources[0]?.summary) reply = formatPlainAnswer(webSources[0].summary);
+      if (/^Chưa có đủ nguồn phù hợp/i.test(reply) && webSources[0]?.summary) {
+        const summaryReply = await requestSimpleGroundedAnswer(message, [{ ...webSources[0], description: webSources[0].summary }]);
+        if (summaryReply && !/^Chưa có đủ nguồn phù hợp/i.test(summaryReply)) reply = enforceQuestionScope(message, summaryReply);
+      }
       if (needsCompletenessExpansion(message, reply)) {
         const completeReply = await requestCompleteGroundedAnswer(message, webSources);
         if (completeReply && !/^Chưa có đủ nguồn phù hợp/i.test(completeReply)) reply = enforceQuestionScope(message, completeReply);
@@ -618,7 +667,7 @@ verifiedWebSources: ${JSON.stringify(webSources)}`;
   } catch (error) {
     const usingOllama = config.ai.provider === 'ollama';
     const verifiedSummary = webSources.find((source) => source.summary)?.summary;
-    if (verifiedSummary) return res.json({ reply: appendVerifiedSources(verifiedSummary, webSources), provider: 'tavily', source: 'verified-web-fallback', sources: webSources });
+    if (verifiedSummary && !isPredominantlyEnglish(verifiedSummary)) return res.json({ reply: appendVerifiedSources(verifiedSummary, webSources), provider: 'tavily', source: 'verified-web-fallback', sources: webSources });
     return res.status(503).json({ message: usingOllama ? 'Không kết nối được Ollama. Hãy chạy ollama serve và tải model đã cấu hình.' : 'Không kết nối được OpenAI.', code: usingOllama ? 'OLLAMA_UNAVAILABLE' : 'OPENAI_UNAVAILABLE', detail: error.message });
   }
 });
