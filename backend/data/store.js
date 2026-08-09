@@ -12,6 +12,19 @@ const sensorDefinitions = [
   ['PH-B1', 'ph', 'pH', 2, ''],
   ['EC-B1', 'ec', 'mS/cm', 2, ''],
   ['WATER-B1', 'water_level', '%', 2, ''],
+  ['HUM-B1', 'humidity', '%', 2, ''],
+  ['LIGHT-B1', 'light', 'lux', 2, ''],
+  ...['C', 'D', 'E', 'F'].flatMap((code, index) => {
+    const areaId = index + 3;
+    return [
+      [`TEMP-${code}1`, 'temperature', '°C', areaId, ''],
+      [`HUM-${code}1`, 'humidity', '%', areaId, ''],
+      [`PH-${code}1`, 'ph', 'pH', areaId, ''],
+      [`EC-${code}1`, 'ec', 'mS/cm', areaId, ''],
+      [`LIGHT-${code}1`, 'light', 'lux', areaId, ''],
+      [`WATER-${code}1`, 'water_level', '%', areaId, ''],
+    ];
+  }),
 ];
 
 export const store = {
@@ -34,6 +47,9 @@ export const store = {
     { area_id: 1, area_name: 'Khu A', location: 'Nhà màng phía Đông', crop_type: 'Rau muống', description: 'Khu trồng rau ăn lá và mô hình Micro:bit', status: 'active' },
     { area_id: 2, area_name: 'Khu B', location: 'Nhà màng trung tâm', crop_type: 'Xà lách xanh', description: 'Khu trồng xà lách', status: 'active' },
     { area_id: 3, area_name: 'Khu C', location: 'Nhà màng phía Tây', crop_type: 'Cải bó xôi', description: 'Khu thử nghiệm', status: 'maintenance' },
+    { area_id: 4, area_name: 'Khu D', location: 'Nhà màng phía Bắc', crop_type: 'Húng quế', description: 'Khu trồng rau gia vị', status: 'active' },
+    { area_id: 5, area_name: 'Khu E', location: 'Nhà màng mở rộng 1', crop_type: 'Cà chua bi', description: 'Khu trồng cây ăn quả thủy canh', status: 'active' },
+    { area_id: 6, area_name: 'Khu F', location: 'Nhà màng mở rộng 2', crop_type: 'Dưa leo', description: 'Khu trồng dây leo', status: 'active' },
   ],
   sensors: sensorDefinitions.map((sensor, index) => ({
     sensor_id: index + 1,
@@ -72,6 +88,18 @@ export const store = {
       command_topic: 'greenargric/area/1/device/DOSING-A/set',
       status_topic: 'greenargric/area/1/device/DOSING-A/status', last_seen: iso(-1),
     },
+    { device_id: 5, area_id: 2, device_code: 'PUMP-B', device_name: 'Máy bơm tưới B', device_type: 'circulation_pump', status: 'OFF', mode: 'AUTO', last_seen: iso(-2) },
+    { device_id: 6, area_id: 2, device_code: 'LED-B', device_name: 'Hệ thống đèn LED B', device_type: 'grow_light', status: 'ON', mode: 'AUTO', last_seen: iso(-2) },
+    { device_id: 7, area_id: 3, device_code: 'FAN-C', device_name: 'Quạt thông gió C', device_type: 'fan', status: 'ON', mode: 'AUTO', last_seen: iso(-2) },
+    { device_id: 8, area_id: 3, device_code: 'OXY-C', device_name: 'Bơm oxy hòa tan C', device_type: 'circulation_pump', status: 'ON', mode: 'AUTO', last_seen: iso(-2) },
+    { device_id: 9, area_id: 4, device_code: 'OXY-D', device_name: 'Bơm oxy hòa tan D', device_type: 'circulation_pump', status: 'ON', mode: 'AUTO', last_seen: iso(-2) },
+    { device_id: 10, area_id: 4, device_code: 'FAN-D', device_name: 'Quạt làm mát D', device_type: 'fan', status: 'OFF', mode: 'AUTO', last_seen: iso(-2) },
+    { device_id: 11, area_id: 5, device_code: 'PUMP-E', device_name: 'Bơm tuần hoàn E', device_type: 'circulation_pump', status: 'ON', mode: 'AUTO', last_seen: iso(-2) },
+    { device_id: 12, area_id: 5, device_code: 'LED-E', device_name: 'Đèn LED sinh trưởng E', device_type: 'grow_light', status: 'ON', mode: 'AUTO', last_seen: iso(-2) },
+    { device_id: 13, area_id: 5, device_code: 'FAN-E', device_name: 'Quạt đối lưu E', device_type: 'fan', status: 'ON', mode: 'AUTO', last_seen: iso(-2) },
+    { device_id: 14, area_id: 6, device_code: 'DOSING-F', device_name: 'Bơm dinh dưỡng F', device_type: 'dosing_pump', status: 'OFF', mode: 'AUTO', last_seen: iso(-2) },
+    { device_id: 15, area_id: 6, device_code: 'PUMP-F', device_name: 'Bơm tuần hoàn F', device_type: 'circulation_pump', status: 'ON', mode: 'AUTO', last_seen: iso(-2) },
+    { device_id: 16, area_id: 6, device_code: 'LED-F', device_name: 'Đèn LED sinh trưởng F', device_type: 'grow_light', status: 'ON', mode: 'AUTO', last_seen: iso(-2) },
   ],
   thresholds: [
     { threshold_id: 1, area_id: 1, sensor_type: 'temperature', min_value: 22, max_value: 30, warning_level: 'medium', is_activated: true },
@@ -113,6 +141,22 @@ const defaults = {
   light: 680,
   water_level: 72,
 };
+
+const thresholdDefaults = {
+  temperature: [22, 30, 'medium'], humidity: [60, 85, 'low'], ph: [5.8, 6.5, 'high'],
+  ec: [1.2, 2.2, 'high'], water_level: [40, 100, 'high'], light: [500, 1200, 'low'],
+};
+
+for (const area of store.areas) {
+  for (const [sensorType, [minValue, maxValue, warningLevel]] of Object.entries(thresholdDefaults)) {
+    if (!store.thresholds.some((item) => item.area_id === area.area_id && item.sensor_type === sensorType)) {
+      store.thresholds.push({
+        threshold_id: Math.max(0, ...store.thresholds.map((item) => item.threshold_id)) + 1, area_id: area.area_id, sensor_type: sensorType,
+        min_value: minValue, max_value: maxValue, warning_level: warningLevel, is_activated: true,
+      });
+    }
+  }
+}
 
 for (const sensor of store.sensors) {
   for (let i = 24; i >= 0; i -= 1) {

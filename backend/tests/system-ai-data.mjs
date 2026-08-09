@@ -8,6 +8,10 @@ const areas = answerSystemDataQuestion('Tình hình các khu vực trồng hôm 
 assert.match(areas, /Khu A/);
 assert.match(areas, /Khu B/);
 assert.match(areas, /Khu C/);
+assert.match(areas, /Khu D/);
+assert.match(areas, /Khu E/);
+assert.match(areas, /Khu F/);
+assert.doesNotMatch(areas, /chưa có dữ liệu cảm biến/);
 assert.doesNotMatch(areas, /https?:\/\//);
 
 const tasks = answerSystemDataQuestion('Công việc của tôi là gì?', technician);

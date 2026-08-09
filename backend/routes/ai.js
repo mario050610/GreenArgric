@@ -156,13 +156,17 @@ export function answerSystemDataQuestion(question, currentUser) {
   }
 
   if (/(thiet bi|may bom|den led|quat|bom cham)/.test(normalized)) {
-    const devices = store.devices.filter((device) => !areaMatch || selectedAreas.some((area) => area.area_id === device.area_id));
-    return devices.length ? devices.map((device) => `- ${device.device_name}: ${device.status === 'ON' ? 'đang bật' : 'đang tắt'}, chế độ ${device.mode === 'AUTO' ? 'tự động' : 'thủ công'}, ${store.areas.find((area) => area.area_id === device.area_id)?.area_name}.`).join('\n') : 'Chưa có thiết bị phù hợp trong hệ thống.';
+    return selectedAreas.map((area) => {
+      const devices = store.devices.filter((device) => device.area_id === area.area_id);
+      return `- ${area.area_name}: ${devices.length ? devices.map((device) => `${device.device_name} ${device.status === 'ON' ? 'đang bật' : 'đang tắt'} (${device.mode === 'AUTO' ? 'tự động' : 'thủ công'})`).join(', ') : 'chưa có thiết bị'}.`;
+    }).join('\n');
   }
 
   if (/(canh bao|bat thuong|su co)/.test(normalized)) {
-    const alerts = store.alerts.filter((alert) => alert.status === 'open' && (!areaMatch || selectedAreas.some((area) => area.area_id === alert.area_id)));
-    return alerts.length ? alerts.map((alert) => `- ${store.areas.find((area) => area.area_id === alert.area_id)?.area_name}: ${alert.title}; ${alert.message}; mức ${alert.severity === 'high' ? 'cao' : alert.severity === 'medium' ? 'trung bình' : 'thấp'}.`).join('\n') : 'Hiện không có cảnh báo đang mở.';
+    return selectedAreas.map((area) => {
+      const alerts = store.alerts.filter((alert) => alert.area_id === area.area_id && alert.status === 'open');
+      return `- ${area.area_name}: ${alerts.length ? alerts.map((alert) => `${alert.title}; ${alert.message}; mức ${alert.severity === 'high' ? 'cao' : alert.severity === 'medium' ? 'trung bình' : 'thấp'}`).join(', ') : 'không có cảnh báo đang mở'}.`;
+    }).join('\n');
   }
 
   if (/(cong viec|bao tri|nhiem vu|lich lam)/.test(normalized)) {
