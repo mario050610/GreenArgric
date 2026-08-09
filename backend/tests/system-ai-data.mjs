@@ -13,6 +13,10 @@ assert.match(highestWaterGarden, /Khu [A-L].*mực nước cao nhất:.*%/);
 assert.doesNotMatch(highestWaterGarden, /https?:\/\//);
 assert.equal(highestWaterGarden.split('\n').length, 1);
 
+const highestWaterGrowingArea = answerSystemDataQuestion('Khu vực trồng nào đang có mực nước cao nhất?', owner);
+assert.match(highestWaterGrowingArea, /Khu [A-L].*mực nước cao nhất:.*%/);
+assert.equal(highestWaterGrowingArea.split('\n').length, 1);
+
 const areas = answerSystemDataQuestion('Tình hình các khu vực trồng hôm nay như thế nào?', owner);
 assert.match(areas, /Khu A/);
 assert.match(areas, /Khu B/);

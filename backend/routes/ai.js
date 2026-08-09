@@ -539,7 +539,8 @@ export function answerSystemDataQuestion(question, currentUser) {
     }).join('\n');
   }
 
-  if (/(khu vuc|khu trong|vuon hom nay|tinh hinh.*vuon|tinh trang.*vuon|tong quan.*vuon)/.test(normalized)) {
+  const sensorQuestion = /(cam bien|nhiet do|do am|muc nuoc|anh sang|\bph\b|\bec\b|chi so moi truong)/.test(normalized);
+  if (!sensorQuestion && /(khu vuc|khu trong|vuon hom nay|tinh hinh.*vuon|tinh trang.*vuon|tong quan.*vuon)/.test(normalized)) {
     return selectedAreas.map((area) => {
       const readings = ['temperature', 'humidity', 'ph', 'ec', 'water_level']
         .map((type) => latestReading(area.area_id, type))
@@ -550,7 +551,7 @@ export function answerSystemDataQuestion(question, currentUser) {
     }).join('\n');
   }
 
-  if (/(cam bien|nhiet do|do am|muc nuoc|anh sang|\bph\b|\bec\b|chi so moi truong)/.test(normalized)) {
+  if (sensorQuestion) {
     const requestedTypes = Object.keys(sensorLabels).filter((type) => {
       const aliases = { temperature: 'nhiet do', humidity: 'do am', water_level: 'muc nuoc', light: 'anh sang', ph: 'ph', ec: 'ec' };
       return normalized.includes(aliases[type]);
