@@ -9,12 +9,12 @@ http.createServer((req, res) => {
     const payload = JSON.parse(body || '{}');
     res.setHeader('content-type', 'application/json');
     const systemPrompt = payload.messages?.find((message) => message.role === 'system')?.content || '';
-    if (!systemPrompt.includes('verifiedWebSources') || !systemPrompt.includes('"users"')) {
+    const isEditing = systemPrompt.includes('biên tập viên tiếng Việt');
+    if (!isEditing && (!systemPrompt.includes('verifiedWebSources') || !systemPrompt.includes('"users"'))) {
       res.writeHead(400);
       res.end(JSON.stringify({ error: 'Missing general assistant prompt or system users context' }));
       return;
     }
-    const isEditing = payload.messages?.at(-1)?.content?.includes('biên tập lại câu trả lời');
     const content = isEditing ? '* **Phản hồi Ollama kiểm thử**' : '* **Phản hồi Ollama kiểm thử 漢**';
     res.end(JSON.stringify({ model: payload.model, message: { role: 'assistant', content }, done: true }));
   });
