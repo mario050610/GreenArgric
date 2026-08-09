@@ -108,6 +108,7 @@ if (!isRecipeQuestion('Công thức nấu gà hấp cải bẹ xanh')) throw new
 if (isInternalSystemQuestion('Thiết bị bán dẫn hoạt động như thế nào?')) throw new Error('General device question was incorrectly classified as internal');
 if (!isInternalSystemQuestion('Trạng thái thiết bị Khu A hiện tại thế nào?')) throw new Error('Area device status was not classified as internal');
 if (!isInternalSystemQuestion('Vườn nào đang có mực nước cao nhất?')) throw new Error('Garden alias was not classified as internal area data');
+if (!isInternalSystemQuestion('Khu nào đang có vấn đề nhất?')) throw new Error('Bare area alias was not classified as internal area data');
 if (!isPredominantlyEnglish('The chemical formula of sodium chloride is NaCl and it is commonly used in food.')) throw new Error('English answer was not detected');
 if (isPredominantlyEnglish('Công thức hóa học của natri clorua là NaCl và chất này được dùng trong thực phẩm.')) throw new Error('Vietnamese answer was incorrectly detected as English');
 const scopedVegetableAnswer = enforceQuestionScope('Rau gì chứa nhiều vitamin D?', '- Cải xoăn: là một loại rau.\n- Lòng đỏ trứng: chứa vitamin D.\n- Cá hồi: chứa vitamin D.');

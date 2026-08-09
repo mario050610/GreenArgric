@@ -17,6 +17,27 @@ const highestWaterGrowingArea = answerSystemDataQuestion('Khu vực trồng nào
 assert.match(highestWaterGrowingArea, /Khu [A-L].*mực nước cao nhất:.*%/);
 assert.equal(highestWaterGrowingArea.split('\n').length, 1);
 
+const mostProblematicArea = answerSystemDataQuestion('Khu nào đang có vấn đề nhất?', owner);
+assert.match(mostProblematicArea, /Khu E.*sức khỏe 63%.*nguy hiểm/);
+assert.equal(mostProblematicArea.split('\n').length, 1);
+
+assert.match(answerSystemDataQuestion('Khu A trồng gì?', owner), /Khu A: đang trồng Rau muống/);
+assert.match(answerSystemDataQuestion('Rau muống trồng ở khu nào?', owner), /Rau muống đang được trồng tại Khu A/);
+assert.match(answerSystemDataQuestion('Khu nào trồng Dâu tây?', owner), /Dâu tây đang được trồng tại Khu H/);
+assert.match(answerSystemDataQuestion('Cải kale hiện được trồng tại đâu?', owner), /Cải kale đang được trồng tại Khu I/);
+assert.match(answerSystemDataQuestion('Chủ vườn nào đang phụ trách Khu I?', owner), /Khu I: chủ vườn quản lý là Trần Thị Nhi/);
+const nhiAreas = answerSystemDataQuestion('Trần Thị Nhi đang quản lý những khu nào?', owner);
+for (const code of ['I', 'J', 'K', 'L']) assert.match(nhiAreas, new RegExp(`Khu ${code}`));
+assert.doesNotMatch(nhiAreas, /Khu [A-H]/);
+assert.match(answerSystemDataQuestion('Kỹ thuật viên nào phụ trách công việc tại Khu F?', { id: 1, role: 'admin' }), /Nguyễn Văn Đức.*Khu F/);
+assert.equal(answerSystemDataQuestion('Công việc bảo trì tại Khu J được lên lịch khi nào?', { id: 1, role: 'admin' }).split('\n').length, 1);
+assert.match(answerSystemDataQuestion('Ngưỡng nhiệt độ của Khu C đang được cấu hình thế nào?', owner), /Khu C - Nhiệt độ: từ 22 đến 30/);
+assert.match(answerSystemDataQuestion('Có bao nhiêu thiết bị đang được lắp tại Khu A?', owner), /Khu A: có 4 thiết bị/);
+const offDevices = answerSystemDataQuestion('Những thiết bị nào trong hệ thống hiện đang tắt?', owner);
+assert.doesNotMatch(offDevices, /đang bật/);
+assert.match(answerSystemDataQuestion('Khu L có bao nhiêu cảm biến?', owner), /Khu L: có 6 cảm biến/);
+assert.match(answerSystemDataQuestion('Cho tôi thông tin tổng quan của Khu G.', owner), /Khu G: trồng Cải thìa/);
+
 const areas = answerSystemDataQuestion('Tình hình các khu vực trồng hôm nay như thế nào?', owner);
 assert.match(areas, /Khu A/);
 assert.match(areas, /Khu B/);
