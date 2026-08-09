@@ -16,6 +16,7 @@ const publicUser = (user) => ({
   full_name: user.full_name,
   email: user.email,
   status: user.status,
+  created_at: user.created_at || null,
   role: store.roles.find((role) => role.role_id === user.role_id)?.role_name,
 });
 
@@ -69,6 +70,7 @@ router.post('/', allowRoles('admin'), async (req, res) => {
     email,
     password_hash: await bcrypt.hash(password, 10),
     status,
+    created_at: new Date().toISOString(),
   };
   await persistUser(item);
   store.users.push(item);

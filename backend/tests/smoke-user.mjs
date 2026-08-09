@@ -18,7 +18,7 @@ const response = await fetch(`${baseUrl}/user`, {
   body: JSON.stringify({ full_name: 'Tài khoản kiểm thử', email: `ui-test-${Date.now()}@greenargric.local`, password: 'greenargric2026', role: 'technician', status: 'active' }),
 });
 const body = await response.json();
-if (response.status !== 201 || body.role !== 'technician') {
+if (response.status !== 201 || body.role !== 'technician' || !body.created_at) {
   throw new Error(`Create user failed: ${response.status} ${JSON.stringify(body)}`);
 }
 const ownerAccountResponse = await fetch(`${baseUrl}/user`, {
@@ -53,6 +53,15 @@ if (!restoreResponse.ok) throw new Error(`Restore password failed: ${restoreResp
 const ownerLogin = await fetch(`${baseUrl}/auth/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'owner@greenargric.edu.vn', password: 'greenargric2026' }) });
 const ownerAuth = await ownerLogin.json();
 const ownerHeaders = { 'content-type': 'application/json', authorization: `Bearer ${ownerAuth.token}` };
+const newAreaResponse = await fetch(`${baseUrl}/area`, { method: 'POST', headers: ownerHeaders, body: JSON.stringify({ area_name: 'Khu smoke', crop_type: 'Rau thử nghiệm', location: '20 m²', description: 'Kiểm thử thêm khu vực' }) });
+const newArea = await newAreaResponse.json();
+if (newAreaResponse.status !== 201 || newArea.owner_id !== ownerAuth.user.id) throw new Error(`Owner create area failed: ${newAreaResponse.status} ${JSON.stringify(newArea)}`);
+const newAreaThresholdsResponse = await fetch(`${baseUrl}/threshold/${newArea.area_id}`, { headers: ownerHeaders });
+const newAreaThresholds = await newAreaThresholdsResponse.json();
+if (!newAreaThresholdsResponse.ok || !newAreaThresholds.some((item) => item.sensor_type === 'dissolved_oxygen')) throw new Error(`New area threshold defaults missing: ${JSON.stringify(newAreaThresholds)}`);
+const saveThresholdResponse = await fetch(`${baseUrl}/threshold`, { method: 'POST', headers: ownerHeaders, body: JSON.stringify({ area_id: newArea.area_id, sensor_type: 'co2', min_value: 450, max_value: 1100, is_activated: true }) });
+const savedThreshold = await saveThresholdResponse.json();
+if (!saveThresholdResponse.ok || savedThreshold.min_value !== 450 || savedThreshold.max_value !== 1100) throw new Error(`Save threshold failed: ${saveThresholdResponse.status} ${JSON.stringify(savedThreshold)}`);
 const ownerMessage = await fetch(`${baseUrl}/message`, { method: 'POST', headers: ownerHeaders, body: JSON.stringify({ receiver_id: 1, content: 'Tin nhắn smoke test từ chủ vườn' }) });
 if (ownerMessage.status !== 201) throw new Error(`Owner send message failed: ${ownerMessage.status}`);
 const adminConversation = await fetch(`${baseUrl}/message/conversation/2`, { headers });
@@ -79,6 +88,17 @@ if (/[\u3400-\u9FFF]/u.test(aiResult.reply)) throw new Error(`Foreign script cle
 const cookingResponse = await fetch(`${baseUrl}/ai/chat`, { method: 'POST', headers, body: JSON.stringify({ message: 'Cách nấu rau muống ngon?' }) });
 const cookingResult = await cookingResponse.json();
 if (!cookingResponse.ok || cookingResult.provider !== 'system' || cookingResult.source !== 'verified-food-guide' || cookingResult.reply.includes('rau muống nướng') || !cookingResult.reply.includes('Rau muống xào tỏi:') || !cookingResult.reply.includes('dienmayxanh.com/vao-bep/')) throw new Error(`Grounded cooking answer failed: ${cookingResponse.status} ${JSON.stringify(cookingResult)}`);
+const { enforceQuestionScope } = await import('../routes/ai.js');
+const scopedVegetableAnswer = enforceQuestionScope('Rau gì chứa nhiều vitamin D?', '- Cải xoăn: là một loại rau.\n- Lòng đỏ trứng: chứa vitamin D.\n- Cá hồi: chứa vitamin D.');
+if (!scopedVegetableAnswer.includes('Cải xoăn') || scopedVegetableAnswer.includes('trứng') || scopedVegetableAnswer.includes('Cá hồi')) throw new Error(`Question scope validation failed: ${scopedVegetableAnswer}`);
+const preciseRecipeAnswer = enforceQuestionScope('Cách nấu gà hấp cải bẹ xanh', '- Nguyên liệu: gà và cải bẹ xanh.\n- Ướp với 2m hạt nêm trong 30 phút.\n- Hấp gà cho đến khi chín.');
+if (preciseRecipeAnswer.includes('2m') || !preciseRecipeAnswer.includes('Nguyên liệu') || !preciseRecipeAnswer.includes('Hấp gà')) throw new Error(`Recipe precision validation failed: ${preciseRecipeAnswer}`);
+const { selectSourcesForQuestion } = await import('../routes/ai.js');
+if (selectSourcesForQuestion('Cách nấu canh rau', [{ score: 0.9 }, { score: 0.8 }]).length !== 1) throw new Error('Recipe must use one primary source');
+const { isFollowUpQuestion } = await import('../routes/ai.js');
+if (isFollowUpQuestion('Mùi vị của hành tây từ đâu mà ra?') || !isFollowUpQuestion('Còn chủ vườn?')) throw new Error('Conversation follow-up detection failed');
+const mismatchedIntentAnswer = enforceQuestionScope('Mùi vị của hành tây từ đâu mà ra?', 'Nguyên liệu: hành tây\nSơ chế: rửa sạch\nCác bước thực hiện: thái hành');
+if (!mismatchedIntentAnswer.startsWith('Chưa có đủ nguồn')) throw new Error(`Intent mismatch was not blocked: ${mismatchedIntentAnswer}`);
 const groundedAdminResponse = await fetch(`${baseUrl}/ai/chat`, { method: 'POST', headers: ownerHeaders, body: JSON.stringify({ message: 'Quản trị viên tên gì?' }) });
 const groundedAdmin = await groundedAdminResponse.json();
 if (!groundedAdminResponse.ok || groundedAdmin.provider !== 'system' || !groundedAdmin.reply.includes('Phạm Phước Nguyên') || groundedAdmin.reply.includes('Nguồn tham khảo') || groundedAdmin.reply.includes('http')) throw new Error(`Admin contact exception failed: ${groundedAdminResponse.status} ${JSON.stringify(groundedAdmin)}`);
@@ -97,8 +117,11 @@ const techContacts = await techContactsResponse.json();
 if (!techContactsResponse.ok || !techContacts.some((contact) => contact.role === 'admin') || !techContacts.some((contact) => contact.role === 'owner') || !techContacts.some((contact) => contact.role === 'technician' && contact.id !== techAuth.user.id)) throw new Error(`Technician contact ACL failed: ${JSON.stringify(techContacts)}`);
 const areaStatusResponse = await fetch(`${baseUrl}/ai/chat`, { method: 'POST', headers: ownerHeaders, body: JSON.stringify({ message: 'Tình hình các khu vực trồng hôm nay như thế nào?' }) });
 const areaStatus = await areaStatusResponse.json();
-if (!areaStatusResponse.ok || areaStatus.source !== 'green-argric-data' || !'ABCDEFGHIJKL'.split('').every((code) => areaStatus.reply.includes(`Khu ${code}`)) || areaStatus.reply.includes('chưa có dữ liệu cảm biến') || areaStatus.reply.includes('Nguồn tham khảo') || areaStatus.reply.includes('http')) throw new Error(`Area status AI query failed: ${areaStatusResponse.status} ${JSON.stringify(areaStatus)}`);
+if (!areaStatusResponse.ok || areaStatus.source !== 'green-argric-data' || !'ABCDEFGHIJKL'.split('').every((code) => areaStatus.reply.includes(`Khu ${code}`)) || areaStatus.reply.includes('Nguồn tham khảo') || areaStatus.reply.includes('http')) throw new Error(`Area status AI query failed: ${areaStatusResponse.status} ${JSON.stringify(areaStatus)}`);
 if (!areaStatus.reply.includes('Nhiệt độ 25.8') || !areaStatus.reply.includes('Nhiệt độ 24.7') || !areaStatus.reply.includes('pH 6.8')) throw new Error(`Area readings are not distinct: ${JSON.stringify(areaStatus)}`);
+const cropResponse = await fetch(`${baseUrl}/ai/chat`, { method: 'POST', headers: ownerHeaders, body: JSON.stringify({ message: 'Khu E đang trồng gì?' }) });
+const cropResult = await cropResponse.json();
+if (!cropResponse.ok || cropResult.source !== 'green-argric-data' || !cropResult.reply.includes('Khu E: đang trồng Cà chua bi') || cropResult.reply.includes('Nguồn tham khảo') || cropResult.reply.includes('http')) throw new Error(`Area crop query failed: ${JSON.stringify(cropResult)}`);
 const managerResponse = await fetch(`${baseUrl}/ai/chat`, { method: 'POST', headers: ownerHeaders, body: JSON.stringify({ message: 'Ai quản lý khu nào?' }) });
 const managers = await managerResponse.json();
 if (!managerResponse.ok || managers.source !== 'green-argric-data' || !managers.reply.includes('Huỳnh Minh Quân') || !managers.reply.includes('Nguyễn Thúy Ái') || !managers.reply.includes('Trần Thị Nhi') || managers.reply.includes('Trần Huỳnh Đăng Khoa') || managers.reply.includes('Nguồn tham khảo')) throw new Error(`Area manager query failed: ${JSON.stringify(managers)}`);

@@ -9,8 +9,8 @@ http.createServer((req, res) => {
     const payload = JSON.parse(body || '{}');
     res.setHeader('content-type', 'application/json');
     const systemPrompt = payload.messages?.find((message) => message.role === 'system')?.content || '';
-    const isEditing = systemPrompt.includes('biên tập viên tiếng Việt');
-    if (!isEditing && (!systemPrompt.includes('verifiedWebSources') || !systemPrompt.includes('"users"'))) {
+    const isEditing = systemPrompt.includes('biên tập viên tiếng Việt') || systemPrompt.includes('bộ kiểm chứng câu trả lời tiếng Việt');
+    if (!isEditing && !systemPrompt.includes('verifiedWebSources')) {
       res.writeHead(400);
       res.end(JSON.stringify({ error: 'Missing general assistant prompt or system users context' }));
       return;

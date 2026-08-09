@@ -180,6 +180,7 @@ const areaDefaults = {
 const thresholdDefaults = {
   temperature: [22, 30, 'medium'], humidity: [60, 85, 'low'], ph: [5.8, 6.5, 'high'],
   ec: [1.2, 2.2, 'high'], water_level: [40, 100, 'high'], light: [500, 1200, 'low'],
+  co2: [400, 1200, 'medium'], dissolved_oxygen: [5, 10, 'high'], solution_temperature: [18, 26, 'medium'],
 };
 
 for (const area of store.areas) {
