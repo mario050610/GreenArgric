@@ -1,8 +1,16 @@
 import sql from 'mssql';
+import { readFile, rename, writeFile } from 'node:fs/promises';
 import { config } from './config.js';
 import { store } from './data/store.js';
 
 let pool;
+const memoryUsersFile = new URL(process.env.USER_DATA_FILE || './data/runtime-users.json', import.meta.url);
+
+async function saveMemoryUsers(users) {
+  const temporaryFile = new URL(`${memoryUsersFile.href}.tmp`);
+  await writeFile(temporaryFile, `${JSON.stringify(users, null, 2)}\n`, 'utf8');
+  await rename(temporaryFile, memoryUsersFile);
+}
 
 export const isSqlMode = () => config.dataMode.toLowerCase() === 'mssql';
 
@@ -35,7 +43,16 @@ const tableLoads = {
 };
 
 export async function hydrateStoreFromDatabase() {
-  if (!isSqlMode()) return;
+  if (!isSqlMode()) {
+    try {
+      const users = JSON.parse(await readFile(memoryUsersFile, 'utf8'));
+      if (Array.isArray(users) && users.length) store.users.splice(0, store.users.length, ...users);
+      console.log(`[database] Loaded ${store.users.length} users from persistent memory file`);
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+    }
+    return;
+  }
   for (const [key, statement] of Object.entries(tableLoads)) {
     const result = await query(statement);
     store[key].splice(0, store[key].length, ...result.recordset);
@@ -83,14 +100,20 @@ export async function persistDevice(device) {
 }
 
 export async function persistUser(user) {
-  if (!isSqlMode()) return;
+  if (!isSqlMode()) {
+    await saveMemoryUsers([...store.users.filter((item) => item.user_id !== user.user_id), user]);
+    return;
+  }
   const result = await query(`INSERT INTO [User](role_id,full_name,email,password_hash,status)
     OUTPUT INSERTED.user_id VALUES(@role_id,@full_name,@email,@password_hash,@status)`, user);
   user.user_id = Number(result.recordset[0].user_id);
 }
 
 export async function updatePersistedUser(user) {
-  if (!isSqlMode()) return;
+  if (!isSqlMode()) {
+    await saveMemoryUsers(store.users);
+    return;
+  }
   await query(`UPDATE [User] SET role_id=@role_id,full_name=@full_name,email=@email,
     password_hash=@password_hash,status=@status WHERE user_id=@user_id`, user);
 }

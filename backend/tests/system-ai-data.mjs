@@ -30,7 +30,7 @@ assert.doesNotMatch(myAreas, /Khu C/);
 const tasks = answerSystemDataQuestion('Công việc của tôi là gì?', technician);
 assert.match(tasks, /Kiểm tra đầu dò pH/);
 assert.match(tasks, /Bảo trì bơm tuần hoàn F/);
-assert.equal(tasks.split('\n').length, 10);
+assert.equal(tasks.split('\n').length, 4);
 
 const ownerAppointments = answerSystemDataQuestion('Lịch hẹn và công việc kỹ thuật viên sẽ làm cho vườn của tôi?', owner);
 assert.equal(ownerAppointments.split('\n').length, 4);

@@ -201,11 +201,22 @@ export function answerSystemDataQuestion(question, currentUser) {
     }).join('\n');
   }
 
-  if (/(cong viec|bao tri|nhiem vu|lich lam|lich hen|se lam.*vuon)/.test(normalized)) {
+  if (/(cong viec|bao tri|nhiem vu|lich lam|lich hen|se lam.*vuon|ky thuat vien.*(den sua|sua|thuc hien)|ai.*(den sua|sua chua|bao tri))/.test(normalized)) {
     const tasks = store.tasks.filter((task) => currentUser.role === 'admin'
       || (currentUser.role === 'technician' && task.assigned_to === currentUser.id)
       || (currentUser.role === 'owner' && store.areas.find((area) => area.area_id === task.area_id)?.owner_id === currentUser.id));
-    return tasks.length ? tasks.map((task) => `- ${task.title}: ${task.description}, ${store.areas.find((area) => area.area_id === task.area_id)?.area_name}, lịch hẹn ${new Date(task.scheduled_at).toLocaleString('vi-VN')}, trạng thái ${task.status === 'pending' ? 'chờ xử lý' : task.status}, phụ trách ${store.users.find((user) => user.user_id === task.assigned_to)?.full_name}.`).join('\n') : 'Tài khoản của bạn hiện không có công việc hoặc lịch hẹn liên quan.';
+    if (!tasks.length) return 'Tài khoản của bạn hiện không có công việc hoặc lịch hẹn liên quan.';
+    if (/ky thuat vien.*(nao|den sua|sua|thuc hien)|ai.*(den sua|sua chua|bao tri)/.test(normalized)) {
+      const grouped = new Map();
+      for (const task of tasks) {
+        const technician = store.users.find((user) => user.user_id === task.assigned_to)?.full_name || 'Chưa phân công';
+        const rows = grouped.get(technician) || [];
+        rows.push(`${task.title} (${store.areas.find((area) => area.area_id === task.area_id)?.area_name})`);
+        grouped.set(technician, rows);
+      }
+      return [...grouped.entries()].map(([technician, rows]) => `- ${technician}: ${rows.join(', ')}.`).join('\n');
+    }
+    return tasks.map((task) => `- ${task.title}: ${store.areas.find((area) => area.area_id === task.area_id)?.area_name}, lịch ${new Date(task.scheduled_at).toLocaleString('vi-VN')}, ${store.users.find((user) => user.user_id === task.assigned_to)?.full_name}.`).join('\n');
   }
 
   if (/(nguong|cau hinh nguong)/.test(normalized)) {
@@ -237,6 +248,10 @@ router.post('/chat', async (req, res) => {
   if (directoryAnswer) return res.json({ reply: formatPlainAnswer(directoryAnswer), provider: 'system', source: 'users', sources: [] });
   const systemDataAnswer = answerSystemDataQuestion(message, req.user);
   if (systemDataAnswer) return res.json({ reply: formatPlainAnswer(systemDataAnswer), provider: 'system', source: 'green-argric-data', sources: [] });
+  const normalizedMessage = normalizeVietnamese(message);
+  if (/(green argric|khu vuc|khu trong|chu vuon|ky thuat vien|quan tri vien|thiet bi|cam bien|canh bao|cong viec|bao tri|lich hen|tai khoan|nguong)/.test(normalizedMessage)) {
+    return res.json({ reply: 'Chưa có dữ liệu nội bộ phù hợp để trả lời câu hỏi này.', provider: 'system', source: 'green-argric-data', sources: [] });
+  }
   const webSources = await searchWebSources(message);
   if (!webSources.length) return res.status(503).json({ message: config.ai.tavilyApiKey ? 'Chưa tìm được bài viết phù hợp để kiểm chứng câu trả lời. Bạn hãy mô tả câu hỏi cụ thể hơn.' : 'Chưa cấu hình TAVILY_API_KEY nên trợ lý không thể tìm nguồn kiểm chứng.', code: 'VERIFIED_SOURCE_UNAVAILABLE' });
   const systemContext = {

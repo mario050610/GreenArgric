@@ -21,6 +21,12 @@ const body = await response.json();
 if (response.status !== 201 || body.role !== 'technician') {
   throw new Error(`Create user failed: ${response.status} ${JSON.stringify(body)}`);
 }
+const ownerAccountResponse = await fetch(`${baseUrl}/user`, {
+  method: 'POST', headers,
+  body: JSON.stringify({ full_name: `Chủ vườn kiểm thử ${Date.now()}`, email: `owner-test-${Date.now()}@greenargric.local`, password: 'greenargric2026', role: 'owner', status: 'active' }),
+});
+const ownerAccount = await ownerAccountResponse.json();
+if (ownerAccountResponse.status !== 201 || ownerAccount.role !== 'owner') throw new Error(`Create owner failed: ${ownerAccountResponse.status} ${JSON.stringify(ownerAccount)}`);
 const deviceResponse = await fetch(`${baseUrl}/device`, {
   method: 'POST', headers,
   body: JSON.stringify({ area_id: 1, device_code: `TEST-${Date.now()}`, device_name: 'Thiết bị kiểm thử', device_type: 'fan' }),
@@ -98,13 +104,16 @@ const managers = await managerResponse.json();
 if (!managerResponse.ok || managers.source !== 'green-argric-data' || !managers.reply.includes('Huỳnh Minh Quân') || !managers.reply.includes('Nguyễn Thúy Ái') || !managers.reply.includes('Trần Thị Nhi') || managers.reply.includes('Trần Huỳnh Đăng Khoa') || managers.reply.includes('Nguồn tham khảo')) throw new Error(`Area manager query failed: ${JSON.stringify(managers)}`);
 const technicianTasksResponse = await fetch(`${baseUrl}/ai/chat`, { method: 'POST', headers: techHeaders, body: JSON.stringify({ message: 'Công việc của tôi là gì?' }) });
 const technicianTasks = await technicianTasksResponse.json();
-if (!technicianTasksResponse.ok || technicianTasks.source !== 'green-argric-data' || !technicianTasks.reply.includes('Kiểm tra đầu dò pH') || !technicianTasks.reply.includes('Bảo trì bơm tuần hoàn F') || technicianTasks.reply.split('\n').length !== 10 || technicianTasks.reply.includes('Nguồn tham khảo')) throw new Error(`Technician task AI query failed: ${technicianTasksResponse.status} ${JSON.stringify(technicianTasks)}`);
+if (!technicianTasksResponse.ok || technicianTasks.source !== 'green-argric-data' || !technicianTasks.reply.includes('Kiểm tra đầu dò pH') || !technicianTasks.reply.includes('Bảo trì bơm tuần hoàn F') || technicianTasks.reply.split('\n').length !== 4 || technicianTasks.reply.includes('Nguồn tham khảo')) throw new Error(`Technician task AI query failed: ${technicianTasksResponse.status} ${JSON.stringify(technicianTasks)}`);
 const technicianTaskListResponse = await fetch(`${baseUrl}/task`, { headers: techHeaders });
 const technicianTaskList = await technicianTaskListResponse.json();
-if (!technicianTaskListResponse.ok || technicianTaskList.length !== 10 || technicianTaskList.some((task) => task.assigned_to !== techAuth.user.id)) throw new Error(`Technician task privacy failed: ${technicianTaskListResponse.status} ${JSON.stringify(technicianTaskList)}`);
+if (!technicianTaskListResponse.ok || technicianTaskList.length !== 4 || technicianTaskList.some((task) => task.assigned_to !== techAuth.user.id)) throw new Error(`Technician task privacy failed: ${technicianTaskListResponse.status} ${JSON.stringify(technicianTaskList)}`);
 const ownerAppointmentsResponse = await fetch(`${baseUrl}/ai/chat`, { method: 'POST', headers: ownerHeaders, body: JSON.stringify({ message: 'Lịch hẹn và công việc kỹ thuật viên sẽ làm cho vườn của tôi?' }) });
 const ownerAppointments = await ownerAppointmentsResponse.json();
 if (!ownerAppointmentsResponse.ok || ownerAppointments.reply.split('\n').length !== 4 || !ownerAppointments.reply.includes('Khu A') || !ownerAppointments.reply.includes('Khu B') || /Khu [C-F]/.test(ownerAppointments.reply)) throw new Error(`Owner appointment ACL failed: ${JSON.stringify(ownerAppointments)}`);
+const repairTechniciansResponse = await fetch(`${baseUrl}/ai/chat`, { method: 'POST', headers: ownerHeaders, body: JSON.stringify({ message: 'Kỹ thuật viên nào sẽ đến sửa?' }) });
+const repairTechnicians = await repairTechniciansResponse.json();
+if (!repairTechniciansResponse.ok || repairTechnicians.source !== 'green-argric-data' || !repairTechnicians.reply.includes('Trần Huỳnh Đăng Khoa') || !repairTechnicians.reply.includes('Nguyễn Thanh Tâm') || !repairTechnicians.reply.includes('Nguyễn Văn Đức') || repairTechnicians.reply.includes('Nguồn tham khảo') || repairTechnicians.reply.includes('http')) throw new Error(`Internal repair query failed: ${JSON.stringify(repairTechnicians)}`);
 const deleteConversation = await fetch(`${baseUrl}/message/conversation/2`, { method: 'DELETE', headers });
 const deletedConversation = await deleteConversation.json();
 if (!deleteConversation.ok || deletedConversation.deleted < 1) throw new Error(`Delete conversation failed: ${deleteConversation.status} ${JSON.stringify(deletedConversation)}`);

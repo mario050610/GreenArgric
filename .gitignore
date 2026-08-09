@@ -9,4 +9,5 @@ __pycache__/
 .venv/
 coverage/
 *.log
-
+backend/data/runtime-users.json
+backend/data/runtime-users.json.tmp

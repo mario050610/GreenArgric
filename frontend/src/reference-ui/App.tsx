@@ -14,6 +14,11 @@ import {
 
 type Role = "owner" | "admin" | "tech";
 
+const sessionUserName = (role: Role) => {
+  try { const name = JSON.parse(localStorage.getItem("greenArgricUser") || "null")?.full_name; if (name) return name; } catch { /* dùng tên mặc định */ }
+  return role === "owner" ? "Huỳnh Minh Quân" : role === "admin" ? "Phạm Phước Nguyên" : "Trần Huỳnh Đăng Khoa";
+};
+
 type Screen =
   | "login"
   | "dashboard" | "environment" | "devices" | "history" | "alerts"
@@ -192,7 +197,7 @@ function Sidebar({ active, role, onNavigate, onLogout }: {
   active: Screen; role: Role; onNavigate: (s: Screen) => void; onLogout: () => void;
 }) {
   const nav = role === "owner" ? OWNER_NAV : role === "admin" ? ADMIN_NAV : TECH_NAV;
-  const userName = role === "owner" ? "Huỳnh Minh Quân" : role === "admin" ? "Phạm Phước Nguyên" : "Trần Huỳnh Đăng Khoa";
+  const userName = sessionUserName(role);
   const userInitial = role === "owner" ? "Q" : role === "admin" ? "N" : "K";
   const userRole = role === "owner" ? "Chủ vườn" : role === "admin" ? "Quản trị viên" : "Kỹ thuật viên";
   const menuLabel = role === "owner" ? "Quản lý vườn" : role === "admin" ? "Quản trị hệ thống" : "Công việc kỹ thuật";
@@ -301,7 +306,7 @@ const PAGE_TITLES: Record<Screen, string> = {
 };
 
 function Header({ screen, role, onNavigate }: { screen: Screen; role: Role; onNavigate: (screen: Screen) => void }) {
-  const userName = role === "owner" ? "Huỳnh Minh Quân" : role === "admin" ? "Phạm Phước Nguyên" : "Trần Huỳnh Đăng Khoa";
+  const userName = sessionUserName(role);
   const userInitial = role === "owner" ? "Q" : role === "admin" ? "N" : "K";
   const userRole = role === "owner" ? "Chủ vườn" : role === "admin" ? "Quản trị viên" : "Kỹ thuật viên";
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -352,16 +357,16 @@ function Header({ screen, role, onNavigate }: { screen: Screen; role: Role; onNa
 
 function LoginScreen({ onLogin }: { onLogin: (role: Role, username: string, password: string) => Promise<void> }) {
   const [selectedRole, setSelectedRole] = useState<Role>("owner");
-  const [username, setUsername] = useState("quan.hmq");
+  const [username, setUsername] = useState("owner@greenargric.edu.vn");
   const [password, setPassword] = useState("greenargric2026");
   const [showPwd, setShowPwd] = useState(false);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   const roleInfo: Record<Role, { label: string; color: string; bg: string; user: string; accent: string }> = {
-    owner: { label: "Chủ vườn", color: "#2E7D32", bg: "#E8F5E9", user: "quan.hmq", accent: "#2E7D32" },
-    admin: { label: "Quản trị viên", color: "#B45309", bg: "#FEF3C7", user: "nguyen.ppn", accent: "#D97706" },
-    tech:  { label: "Kỹ thuật viên", color: "#1D4ED8", bg: "#EFF6FF", user: "khoa.thdk", accent: "#2563EB" },
+    owner: { label: "Chủ vườn", color: "#2E7D32", bg: "#E8F5E9", user: "owner@greenargric.edu.vn", accent: "#2E7D32" },
+    admin: { label: "Quản trị viên", color: "#B45309", bg: "#FEF3C7", user: "admin@greenargric.edu.vn", accent: "#D97706" },
+    tech:  { label: "Kỹ thuật viên", color: "#1D4ED8", bg: "#EFF6FF", user: "tech@greenargric.edu.vn", accent: "#2563EB" },
   };
 
   const handleRoleChange = (r: Role) => {
@@ -441,12 +446,12 @@ function LoginScreen({ onLogin }: { onLogin: (role: Role, username: string, pass
 
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1.5">Tên đăng nhập</label>
+              <label className="block text-sm font-semibold text-gray-700 mb-1.5">Email đăng nhập</label>
               <div className="flex items-center gap-2 border border-gray-200 rounded-xl px-3 py-2.5 focus-within:ring-2 transition-all"
                 style={{ ["--tw-ring-color" as any]: info.color + "33" }}>
                 <Users size={15} className="text-gray-400 flex-shrink-0" />
                 <input value={username} onChange={e => setUsername(e.target.value)}
-                  className="flex-1 text-sm text-gray-700 outline-none bg-transparent" placeholder="username" />
+                  className="flex-1 text-sm text-gray-700 outline-none bg-transparent" placeholder="ten@greenargric.edu.vn" />
               </div>
             </div>
             <div>
@@ -1862,7 +1867,7 @@ function UsersScreen() {
     const full_name = window.prompt("Họ và tên tài khoản mới:"); if (!full_name) return;
     const email = window.prompt("Email:"); if (!email) return;
     const password = window.prompt("Mật khẩu (tối thiểu 6 ký tự):"); if (!password) return;
-    const selectedRole = window.prompt("Vai trò: admin, owner hoặc technician", "owner"); if (!selectedRole) return;
+    const selectedRole = window.prompt("Vai trò: owner (chủ vườn) hoặc technician (kỹ thuật viên)", "owner"); if (!selectedRole) return;
     const token = localStorage.getItem("greenArgricToken");
     const response = await fetch(`${apiUrl}/user`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify({ full_name, email, password, role: selectedRole, status: "active" }) });
     const result = await response.json();
@@ -2184,14 +2189,14 @@ function TasksScreen({ role }: { role: Role }) {
 
   const [schedule, setSchedule] = useState([
     { id: 1, device: "Máy bơm dinh dưỡng A", zone: "Khu A", type: "Bảo trì định kỳ", date: "29/06/2026", tech: "Trần Huỳnh Đăng Khoa", status: "due" },
-    { id: 2, device: "Máy bơm tưới B", zone: "Khu B", type: "Thay bộ lọc", date: "02/07/2026", tech: "Trần Huỳnh Đăng Khoa", status: "upcoming" },
-    { id: 3, device: "Hệ thống đèn LED A", zone: "Khu A", type: "Kiểm tra cường độ", date: "05/07/2026", tech: "Trần Huỳnh Đăng Khoa", status: "upcoming" },
+    { id: 2, device: "Máy bơm tưới B", zone: "Khu B", type: "Thay bộ lọc", date: "02/07/2026", tech: "Nguyễn Thanh Tâm", status: "upcoming" },
+    { id: 3, device: "Hệ thống đèn LED A", zone: "Khu A", type: "Kiểm tra cường độ", date: "05/07/2026", tech: "Nguyễn Văn Đức", status: "upcoming" },
     { id: 4, device: "Máy điều chỉnh pH", zone: "Khu A", type: "Kiểm tra van bơm", date: "28/06/2026", tech: "Trần Huỳnh Đăng Khoa", status: "overdue" },
-    { id: 5, device: "Quạt thông gió C", zone: "Khu C", type: "Vệ sinh cánh quạt", date: "10/07/2026", tech: "Trần Huỳnh Đăng Khoa", status: "upcoming" },
-    { id: 6, device: "Bơm tuần hoàn E", zone: "Khu E", type: "Kiểm tra lưu lượng", date: "11/07/2026", tech: "Trần Huỳnh Đăng Khoa", status: "upcoming" },
+    { id: 5, device: "Quạt thông gió C", zone: "Khu C", type: "Vệ sinh cánh quạt", date: "10/07/2026", tech: "Nguyễn Thanh Tâm", status: "upcoming" },
+    { id: 6, device: "Bơm oxy hòa tan D", zone: "Khu D", type: "Kiểm tra áp suất", date: "11/07/2026", tech: "Nguyễn Văn Đức", status: "upcoming" },
     { id: 7, device: "Đèn LED sinh trưởng E", zone: "Khu E", type: "Vệ sinh và đo cường độ", date: "12/07/2026", tech: "Trần Huỳnh Đăng Khoa", status: "upcoming" },
-    { id: 8, device: "Bơm dinh dưỡng F", zone: "Khu F", type: "Kiểm tra ống châm", date: "13/07/2026", tech: "Trần Huỳnh Đăng Khoa", status: "upcoming" },
-    { id: 9, device: "Bơm tuần hoàn F", zone: "Khu F", type: "Bảo trì định kỳ", date: "15/07/2026", tech: "Trần Huỳnh Đăng Khoa", status: "upcoming" },
+    { id: 8, device: "Đèn LED sinh trưởng E", zone: "Khu E", type: "Vệ sinh và đo cường độ", date: "13/07/2026", tech: "Nguyễn Thanh Tâm", status: "upcoming" },
+    { id: 9, device: "Bơm dinh dưỡng F", zone: "Khu F", type: "Kiểm tra ống châm", date: "15/07/2026", tech: "Nguyễn Văn Đức", status: "upcoming" },
     { id: 10, device: "Máy châm dinh dưỡng B", zone: "Khu B", type: "Hiệu chỉnh định lượng", date: "16/07/2026", tech: "Trần Huỳnh Đăng Khoa", status: "upcoming" },
   ]);
   const [repairLogs, setRepairLogs] = useState([
@@ -4547,15 +4552,16 @@ export default function App() {
     urlScreen && urlRole ? urlRole : null
   );
 
-  const handleLogin = async (r: Role, _username: string, password: string) => {
-    const emailByRole: Record<Role, string> = { owner: "owner@greenargric.edu.vn", admin: "admin@greenargric.edu.vn", tech: "tech@greenargric.edu.vn" };
-    const response = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:3000"}/auth/login`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: emailByRole[r], password }) });
+  const handleLogin = async (_selectedRole: Role, username: string, password: string) => {
+    const response = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:3000"}/auth/login`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: username.trim(), password }) });
     const result = await response.json();
     if (!response.ok) throw new Error(result.message || "Đăng nhập thất bại");
     localStorage.setItem("greenArgricToken", result.token);
-    setRole(r); setScreen("dashboard");
+    localStorage.setItem("greenArgricUser", JSON.stringify(result.user));
+    const actualRole: Role = result.user.role === "technician" ? "tech" : result.user.role;
+    setRole(actualRole); setScreen("dashboard");
   };
-  const handleLogout = () => { localStorage.removeItem("greenArgricToken"); setRole(null); setScreen("login"); };
+  const handleLogout = () => { localStorage.removeItem("greenArgricToken"); localStorage.removeItem("greenArgricUser"); setRole(null); setScreen("login"); };
   useEffect(() => {
     const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:3000";
     const download = (filename: string, content: string, type = "text/csv;charset=utf-8") => {
