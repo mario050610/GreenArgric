@@ -13,6 +13,12 @@ export const isRecipeQuestion = (question) => {
     || (normalized.includes('cong thuc') && cookingContext);
 };
 
+export const isFarmingQuestion = (question) => {
+  const normalized = normalizeVietnamese(question);
+  return /(gieo|phan bon|cham soc|thu hoach|sau benh)/.test(normalized)
+    || /\btrong\b.*\b(cay|rau|cu|qua|hoa|lua|dat|vuon)\b/.test(normalized);
+};
+
 export const isInternalSystemQuestion = (question) => {
   const normalized = normalizeVietnamese(question);
   // Trong GREEN ARGRIC, "vườn", "khu vườn" và "khu" đều là cách gọi
@@ -109,7 +115,9 @@ async function searchWebSources(question) {
   const recipeQuestion = isRecipeQuestion(question);
   const asksForExplanation = /(tai sao|vi sao|tu dau ma ra|nguyen nhan|do dau|hoat dong nhu the nao|bang cach nao|qua trinh|vai tro|su khac nhau)/.test(normalized);
   const howToQuestion = /^(cach|huong dan)\b/.test(normalized);
-  const farmingQuestion = /(trong|gieo|phan bon|cham soc|thu hoach|sau benh)/.test(normalized);
+  // "trong" còn là giới từ (ví dụ: "trong một tuần"), không được tự động
+  // xem mọi câu chứa từ này là câu hỏi canh tác.
+  const farmingQuestion = isFarmingQuestion(question);
   const cropMatch = normalized.match(/\b(?:trong|gieo|cham soc|thu hoach)\s+([a-z0-9 ]{3,40})/);
   const cropSubject = cropMatch?.[1]?.replace(/\b(nhu the nao|ra sao|the nao|tai nha|ky thuat).*$/, '').trim();
   const recipeSynonyms = normalized.includes(' ran') ? ' chiên giòn' : '';
@@ -188,7 +196,7 @@ export function selectSourcesForQuestion(question, sources) {
   const recipeQuestion = isRecipeQuestion(question);
   if (recipeQuestion) return sources.slice(0, 1);
   if (/(suc khoe|benh|tao bon|tre em|em be|dinh duong|vitamin|thuoc|trieu chung)/.test(normalized)) return sources.slice(0, 3);
-  if (/(trong|gieo|phan bon|cham soc|thu hoach|sau benh)/.test(normalized)) return sources.slice(0, 1);
+  if (isFarmingQuestion(question)) return sources.slice(0, 1);
   return sources.slice(0, 3);
 }
 
@@ -480,6 +488,43 @@ const appendVerifiedSources = (answer, sources) => {
   return `${result}${details}${sourceBlock}`;
 };
 
+// Loại câu mô tả hướng chuyển động nếu cặp điểm đầu-cuối không xuất hiện theo
+// đúng thứ tự trong bất kỳ nguồn nào. Đây là kiểm tra căn cứ chung, không phụ
+// thuộc vào một câu hỏi hay lĩnh vực cụ thể.
+export const removeUnsupportedDirectionalDetails = (answer, sources) => {
+  const evidenceParts = sources.flatMap((source) => String(`${source.description || ''}\n${source.summary || ''}`)
+    .split(/(?<=[.!?;\n])/u)
+    .map(normalizeVietnamese));
+  const endpoint = (value) => normalizeVietnamese(value)
+    .replace(/\([^)]*\)/g, ' ')
+    .split(/\s+/)
+    .filter((word) => word.length >= 2 && !['mot', 'cac', 'qua', 'bang', 'thuong', 'la'].includes(word))
+    .slice(0, 2)
+    .join(' ');
+  const supported = (sentence) => {
+    const normalized = normalizeVietnamese(sentence);
+    const state = normalized.match(/\bkhi\s+([^,.;]{2,30})/)?.[1]
+      ?.split(/\s+/)
+      .filter((word) => word.length >= 2)
+      .slice(0, 2)
+      .join(' ');
+    const matches = [...normalized.matchAll(/\btu\s+([^,.;]{2,70}?)\s+(?:sang|den|ve)\s+([^,.;]{2,70})(?=,|\.|;|$)/g)];
+    if (!matches.length) return true;
+    return matches.every((match) => {
+      const start = endpoint(match[1]);
+      const finish = endpoint(match[2]);
+      if (!start || !finish) return false;
+      return evidenceParts.some((part) => {
+        if (state && !part.includes(`khi ${state}`)) return false;
+        const startAt = part.indexOf(start);
+        const finishAt = part.indexOf(finish, startAt + start.length);
+        return startAt >= 0 && finishAt > startAt;
+      });
+    });
+  };
+  return String(answer || '').split(/(?<=[.!?])\s+/u).filter(supported).join(' ').trim();
+};
+
 const roleOfUser = (user) => store.roles.find((role) => role.role_id === user.role_id)?.role_name;
 
 function canViewContact(currentUser, targetUser) {
@@ -745,6 +790,7 @@ verifiedWebSources: ${JSON.stringify(webSources)}`;
         const completeReply = await requestCompleteGroundedAnswer(message, webSources);
         if (completeReply && !/^Chưa có đủ nguồn phù hợp/i.test(completeReply)) reply = enforceQuestionScope(message, completeReply);
       }
+      reply = removeUnsupportedDirectionalDetails(reply, webSources) || 'Nguồn hiện có chưa đủ để xác nhận chính xác chiều của quá trình được hỏi.';
       return res.json({ reply: appendVerifiedSources(reply, webSources), model: config.ai.ollamaModel, provider: 'ollama', sources: webSources });
     }
     if (!config.openai.apiKey) return res.status(503).json({ message: 'Chưa cấu hình OPENAI_API_KEY', code: 'AI_NOT_CONFIGURED' });
@@ -754,6 +800,7 @@ verifiedWebSources: ${JSON.stringify(webSources)}`;
     const output = result.output_text || result.output?.flatMap((item) => item.content || []).find((item) => item.type === 'output_text')?.text;
     let reply = enforceQuestionScope(message, output || 'AI chưa tạo được nội dung trả lời.');
     reply = validateRecipeAgainstSource(message, reply, webSources[0]);
+    reply = removeUnsupportedDirectionalDetails(reply, webSources) || 'Nguồn hiện có chưa đủ để xác nhận chính xác chiều của quá trình được hỏi.';
     return res.json({ reply: appendVerifiedSources(reply, webSources), model: config.openai.model, provider: 'openai', sources: webSources });
   } catch (error) {
     const usingOllama = config.ai.provider === 'ollama';
