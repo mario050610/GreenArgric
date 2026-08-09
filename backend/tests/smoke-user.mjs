@@ -92,10 +92,43 @@ const ownerMessages = await ownerConversation.json();
 if (!ownerMessages.some((message) => message.content === 'Tin nhắn smoke test từ kỹ thuật viên')) throw new Error('Owner did not receive technician message');
 const aiResponse = await fetch(`${baseUrl}/ai/chat`, { method: 'POST', headers, body: JSON.stringify({ message: 'Tình trạng vườn?' }) });
 const aiResult = await aiResponse.json();
-if (!aiResponse.ok || aiResult.provider !== 'ollama' || aiResult.reply.includes('Kết quả:') || aiResult.reply.includes('Giải thích:') || !aiResult.reply.includes('Phản hồi Ollama kiểm thử') || !aiResult.reply.includes('Nguồn tham khảo đã đối chiếu:') || !aiResult.reply.includes('https://example.com/bai-viet-kiem-chung')) throw new Error(`Grounded Ollama chat failed: ${aiResponse.status} ${JSON.stringify(aiResult)}`);
-if (aiResult.reply.includes('**') || /^\s*\*/m.test(aiResult.reply)) throw new Error(`Markdown cleanup failed: ${JSON.stringify(aiResult)}`);
-if (/[\u3400-\u9FFF]/u.test(aiResult.reply)) throw new Error(`Foreign script cleanup failed: ${JSON.stringify(aiResult)}`);
+if (!aiResponse.ok || aiResult.provider !== 'system' || aiResult.source !== 'green-argric-data' || !aiResult.reply.includes('Khu A') || aiResult.reply.includes('Nguồn tham khảo') || aiResult.reply.includes('http')) throw new Error(`Internal garden alias chat failed: ${aiResponse.status} ${JSON.stringify(aiResult)}`);
+const generalDeviceResponse = await fetch(`${baseUrl}/ai/chat`, { method: 'POST', headers, body: JSON.stringify({ message: 'Thiết bị bán dẫn hoạt động như thế nào?' }) });
+const generalDeviceResult = await generalDeviceResponse.json();
+if (!generalDeviceResponse.ok || generalDeviceResult.provider !== 'ollama' || !generalDeviceResult.reply.includes('Phản hồi Ollama kiểm thử') || !generalDeviceResult.reply.includes('Nguồn tham khảo đã đối chiếu:') || !generalDeviceResult.reply.includes('https://example.com/bai-viet-kiem-chung')) throw new Error(`General knowledge question was incorrectly blocked as internal data: ${generalDeviceResponse.status} ${JSON.stringify(generalDeviceResult)}`);
+if (generalDeviceResult.reply.includes('**') || /^\s*\*/m.test(generalDeviceResult.reply)) throw new Error(`Markdown cleanup failed: ${JSON.stringify(generalDeviceResult)}`);
+if (/[\u3400-\u9FFF]/u.test(generalDeviceResult.reply)) throw new Error(`Foreign script cleanup failed: ${JSON.stringify(generalDeviceResult)}`);
 const { enforceQuestionScope } = await import('../routes/ai.js');
+const { isRecipeQuestion } = await import('../routes/ai.js');
+const { isInternalSystemQuestion } = await import('../routes/ai.js');
+const { isPredominantlyEnglish } = await import('../routes/ai.js');
+const { isFarmingQuestion, removeUnsupportedDirectionalDetails } = await import('../routes/ai.js');
+const { normalizeVietnamese } = await import('../routes/ai.js');
+if (isRecipeQuestion('Công thức hóa học của natri clorua là gì?')) throw new Error('Chemical formula was incorrectly classified as a recipe');
+if (isRecipeQuestion('Công thức tính diện tích hình tròn')) throw new Error('Math formula was incorrectly classified as a recipe');
+if (!isRecipeQuestion('Công thức nấu gà hấp cải bẹ xanh')) throw new Error('Cooking recipe was not recognized');
+if (isInternalSystemQuestion('Thiết bị bán dẫn hoạt động như thế nào?')) throw new Error('General device question was incorrectly classified as internal');
+if (!isInternalSystemQuestion('Trạng thái thiết bị Khu A hiện tại thế nào?')) throw new Error('Area device status was not classified as internal');
+if (!isInternalSystemQuestion('Vườn nào đang có mực nước cao nhất?')) throw new Error('Garden alias was not classified as internal area data');
+if (!isInternalSystemQuestion('Khu nào đang có vấn đề nhất?')) throw new Error('Bare area alias was not classified as internal area data');
+if (isFarmingQuestion('Cách lập kế hoạch học tập trong một tuần?')) throw new Error('Preposition "trong" was incorrectly classified as farming');
+if (!isFarmingQuestion('Cách trồng rau trong vườn?')) throw new Error('Actual farming question was not recognized');
+for (const [variants, expected] of [
+  [['o', 'ô', 'ơ', 'ó', 'ờ', 'ợ'], 'o'],
+  [['a', 'ă', 'â', 'á', 'ằ', 'ậ'], 'a'],
+  [['e', 'ê', 'é', 'ề', 'ệ'], 'e'],
+  [['u', 'ư', 'ú', 'ừ', 'ự'], 'u'],
+]) {
+  for (const value of variants) if (normalizeVietnamese(value) !== expected) throw new Error(`Vietnamese vowel normalization failed for ${value}`);
+}
+if (normalizeVietnamese('ĐIỀU KHIỂN\u00a0THIẾT BỊ') !== 'dieu khien thiet bi') throw new Error('Vietnamese uppercase/NBSP normalization failed');
+if (normalizeVietnamese('Nguyễn Thúy Ái') !== normalizeVietnamese('Nguyễn Thúy Ái')) throw new Error('NFD and NFC Vietnamese text did not normalize equally');
+const directionalEvidence = [{ description: 'Khi sạc, ion di chuyển từ cực dương sang cực âm. Khi xả, ion di chuyển từ cực âm sang cực dương.', summary: '' }];
+const groundedDirection = removeUnsupportedDirectionalDetails('Pin hoạt động thuận nghịch. Khi sạc, ion di chuyển từ cực âm sang cực dương. Khi xả, ion di chuyển từ cực âm sang cực dương.', directionalEvidence);
+if (/Khi sạc/i.test(groundedDirection)) throw new Error('Unsupported directional claim was not removed');
+if (!/Khi xả/i.test(groundedDirection)) throw new Error('Supported directional claim was removed');
+if (!isPredominantlyEnglish('The chemical formula of sodium chloride is NaCl and it is commonly used in food.')) throw new Error('English answer was not detected');
+if (isPredominantlyEnglish('Công thức hóa học của natri clorua là NaCl và chất này được dùng trong thực phẩm.')) throw new Error('Vietnamese answer was incorrectly detected as English');
 const scopedVegetableAnswer = enforceQuestionScope('Rau gì chứa nhiều vitamin D?', '- Cải xoăn: là một loại rau.\n- Lòng đỏ trứng: chứa vitamin D.\n- Cá hồi: chứa vitamin D.');
 if (!scopedVegetableAnswer.includes('Cải xoăn') || scopedVegetableAnswer.includes('trứng') || scopedVegetableAnswer.includes('Cá hồi')) throw new Error(`Question scope validation failed: ${scopedVegetableAnswer}`);
 const preciseRecipeAnswer = enforceQuestionScope('Cách nấu gà hấp cải bẹ xanh', '- Nguyên liệu: gà và cải bẹ xanh.\n- Ướp với 2m hạt nêm trong 30 phút.\n- Hấp gà cho đến khi chín.');
