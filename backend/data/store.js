@@ -44,12 +44,12 @@ export const store = {
     { user_id: 8, role_id: 3, full_name: 'Nguyễn Văn Đức', email: 'duc.nv@greenargric.edu.vn', password_hash: 'plain:greenargric2026', status: 'active' },
   ],
   areas: [
-    { area_id: 1, area_name: 'Khu A', location: 'Nhà màng phía Đông', crop_type: 'Rau muống', description: 'Khu trồng rau ăn lá và mô hình Micro:bit', status: 'active' },
-    { area_id: 2, area_name: 'Khu B', location: 'Nhà màng trung tâm', crop_type: 'Xà lách xanh', description: 'Khu trồng xà lách', status: 'active' },
-    { area_id: 3, area_name: 'Khu C', location: 'Nhà màng phía Tây', crop_type: 'Cải bó xôi', description: 'Khu thử nghiệm', status: 'maintenance' },
-    { area_id: 4, area_name: 'Khu D', location: 'Nhà màng phía Bắc', crop_type: 'Húng quế', description: 'Khu trồng rau gia vị', status: 'active' },
-    { area_id: 5, area_name: 'Khu E', location: 'Nhà màng mở rộng 1', crop_type: 'Cà chua bi', description: 'Khu trồng cây ăn quả thủy canh', status: 'active' },
-    { area_id: 6, area_name: 'Khu F', location: 'Nhà màng mở rộng 2', crop_type: 'Dưa leo', description: 'Khu trồng dây leo', status: 'active' },
+    { area_id: 1, owner_id: 2, area_name: 'Khu A', location: 'Nhà màng phía Đông', crop_type: 'Rau muống', description: 'Khu trồng rau ăn lá và mô hình Micro:bit', status: 'active' },
+    { area_id: 2, owner_id: 2, area_name: 'Khu B', location: 'Nhà màng trung tâm', crop_type: 'Xà lách xanh', description: 'Khu trồng xà lách', status: 'active' },
+    { area_id: 3, owner_id: 4, area_name: 'Khu C', location: 'Nhà màng phía Tây', crop_type: 'Cải bó xôi', description: 'Khu thử nghiệm', status: 'maintenance' },
+    { area_id: 4, owner_id: 4, area_name: 'Khu D', location: 'Nhà màng phía Bắc', crop_type: 'Húng quế', description: 'Khu trồng rau gia vị', status: 'active' },
+    { area_id: 5, owner_id: 7, area_name: 'Khu E', location: 'Nhà màng mở rộng 1', crop_type: 'Cà chua bi', description: 'Khu trồng cây ăn quả thủy canh', status: 'active' },
+    { area_id: 6, owner_id: 7, area_name: 'Khu F', location: 'Nhà màng mở rộng 2', crop_type: 'Dưa leo', description: 'Khu trồng dây leo', status: 'active' },
   ],
   sensors: sensorDefinitions.map((sensor, index) => ({
     sensor_id: index + 1,

@@ -19,4 +19,10 @@ assert.match(tasks, /Kiểm tra đầu dò pH/);
 assert.match(tasks, /Bảo trì bơm tuần hoàn F/);
 assert.equal(tasks.split('\n').length, 10);
 
+const ownerAppointments = answerSystemDataQuestion('Lịch hẹn và công việc kỹ thuật viên sẽ làm cho vườn của tôi?', owner);
+assert.equal(ownerAppointments.split('\n').length, 4);
+assert.match(ownerAppointments, /Khu A/);
+assert.match(ownerAppointments, /Khu B/);
+assert.doesNotMatch(ownerAppointments, /Khu C|Khu D|Khu E|Khu F/);
+
 console.log('system AI data queries: PASS');
