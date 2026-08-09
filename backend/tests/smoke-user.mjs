@@ -79,10 +79,10 @@ if (!groundedAdminResponse.ok || groundedAdmin.provider !== 'system' || !grounde
 const ownerFollowUpResponse = await fetch(`${baseUrl}/ai/chat`, { method: 'POST', headers: ownerHeaders, body: JSON.stringify({ message: 'Còn chủ vườn?', history: [{ role: 'user', content: 'Kỹ thuật viên gồm những ai?' }] }) });
 const ownerFollowUp = await ownerFollowUpResponse.json();
 if (!ownerFollowUpResponse.ok || ownerFollowUp.provider !== 'system' || !ownerFollowUp.reply.includes('Huỳnh Minh Quân') || ownerFollowUp.reply.includes('Nguồn tham khảo') || ownerFollowUp.reply.includes('http')) throw new Error(`Owner follow-up failed: ${ownerFollowUpResponse.status} ${JSON.stringify(ownerFollowUp)}`);
-if (ownerFollowUp.reply.includes('Nguyễn Thúy Ái') || ownerFollowUp.reply.includes('Trần Thị Nhi')) throw new Error(`Owner saw another owner: ${JSON.stringify(ownerFollowUp)}`);
+if (!ownerFollowUp.reply.includes('Nguyễn Thúy Ái') || !ownerFollowUp.reply.includes('Trần Thị Nhi')) throw new Error(`Owner cannot see other owners in closed system: ${JSON.stringify(ownerFollowUp)}`);
 const ownerContactsResponse = await fetch(`${baseUrl}/message/contacts`, { headers: ownerHeaders });
 const ownerContacts = await ownerContactsResponse.json();
-if (!ownerContactsResponse.ok || ownerContacts.some((contact) => contact.role === 'owner') || !ownerContacts.some((contact) => contact.role === 'admin') || !ownerContacts.some((contact) => contact.role === 'technician')) throw new Error(`Owner contact ACL failed: ${JSON.stringify(ownerContacts)}`);
+if (!ownerContactsResponse.ok || !ownerContacts.some((contact) => contact.role === 'owner') || !ownerContacts.some((contact) => contact.role === 'admin') || !ownerContacts.some((contact) => contact.role === 'technician')) throw new Error(`Owner contact ACL failed: ${JSON.stringify(ownerContacts)}`);
 const adminContactsResponse = await fetch(`${baseUrl}/message/contacts`, { headers });
 const adminContacts = await adminContactsResponse.json();
 if (!adminContactsResponse.ok || !adminContacts.some((contact) => contact.role === 'owner') || !adminContacts.some((contact) => contact.role === 'technician')) throw new Error(`Admin contact ACL failed: ${JSON.stringify(adminContacts)}`);

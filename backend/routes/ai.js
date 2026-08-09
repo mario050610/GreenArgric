@@ -98,7 +98,7 @@ const roleOfUser = (user) => store.roles.find((role) => role.role_id === user.ro
 function canViewContact(currentUser, targetUser) {
   if (targetUser.user_id === currentUser.id) return true;
   const targetRole = roleOfUser(targetUser);
-  if (currentUser.role === 'owner') return targetRole === 'admin' || targetRole === 'technician';
+  if (currentUser.role === 'owner') return ['admin', 'owner', 'technician'].includes(targetRole);
   if (currentUser.role === 'admin') return targetRole === 'owner' || targetRole === 'technician';
   return currentUser.role === 'technician' && ['admin', 'owner', 'technician'].includes(targetRole);
 }

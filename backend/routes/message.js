@@ -13,7 +13,7 @@ const roleOf = (user) => store.roles.find((role) => role.role_id === user.role_i
 const canContact = (viewer, target) => {
   if (!target || target.user_id === viewer.id) return false;
   const targetRole = roleOf(target);
-  if (viewer.role === 'owner') return targetRole === 'admin' || targetRole === 'technician';
+  if (viewer.role === 'owner') return ['admin', 'owner', 'technician'].includes(targetRole);
   if (viewer.role === 'admin') return targetRole === 'owner' || targetRole === 'technician';
   return viewer.role === 'technician' && ['admin', 'owner', 'technician'].includes(targetRole);
 };
