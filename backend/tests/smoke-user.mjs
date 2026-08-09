@@ -56,6 +56,16 @@ const ownerHeaders = { 'content-type': 'application/json', authorization: `Beare
 const newAreaResponse = await fetch(`${baseUrl}/area`, { method: 'POST', headers: ownerHeaders, body: JSON.stringify({ area_name: 'Khu smoke', crop_type: 'Rau thử nghiệm', location: '20 m²', description: 'Kiểm thử thêm khu vực' }) });
 const newArea = await newAreaResponse.json();
 if (newAreaResponse.status !== 201 || newArea.owner_id !== ownerAuth.user.id) throw new Error(`Owner create area failed: ${newAreaResponse.status} ${JSON.stringify(newArea)}`);
+const updateAreaResponse = await fetch(`${baseUrl}/area/${newArea.area_id}`, {
+  method: 'PUT', headers: ownerHeaders,
+  body: JSON.stringify({ area_name: 'Khu smoke', crop_type: 'Rau thử nghiệm', location: '24 m²', ui_status: 'danger', health_score: 72, status: 'active' }),
+});
+const updatedArea = await updateAreaResponse.json();
+if (!updateAreaResponse.ok || updatedArea.ui_status !== 'warning' || updatedArea.health_score !== 72 || updatedArea.location !== '24 m²') throw new Error(`Area summary update failed: ${updateAreaResponse.status} ${JSON.stringify(updatedArea)}`);
+const refreshedAreasResponse = await fetch(`${baseUrl}/area`, { headers: ownerHeaders });
+const refreshedAreas = await refreshedAreasResponse.json();
+const refreshedArea = refreshedAreas.find((area) => area.area_id === newArea.area_id);
+if (!refreshedAreasResponse.ok || refreshedArea?.ui_status !== 'warning' || refreshedArea?.health_score !== 72) throw new Error(`Area summary reload failed: ${JSON.stringify(refreshedArea)}`);
 const newAreaThresholdsResponse = await fetch(`${baseUrl}/threshold/${newArea.area_id}`, { headers: ownerHeaders });
 const newAreaThresholds = await newAreaThresholdsResponse.json();
 if (!newAreaThresholdsResponse.ok || !newAreaThresholds.some((item) => item.sensor_type === 'dissolved_oxygen')) throw new Error(`New area threshold defaults missing: ${JSON.stringify(newAreaThresholds)}`);
@@ -82,17 +92,42 @@ const ownerMessages = await ownerConversation.json();
 if (!ownerMessages.some((message) => message.content === 'Tin nhắn smoke test từ kỹ thuật viên')) throw new Error('Owner did not receive technician message');
 const aiResponse = await fetch(`${baseUrl}/ai/chat`, { method: 'POST', headers, body: JSON.stringify({ message: 'Tình trạng vườn?' }) });
 const aiResult = await aiResponse.json();
-if (!aiResponse.ok || aiResult.provider !== 'ollama' || !aiResult.reply.includes('Phản hồi Ollama kiểm thử') || !aiResult.reply.includes('Nguồn tham khảo đã đối chiếu:') || !aiResult.reply.includes('https://example.com/bai-viet-kiem-chung')) throw new Error(`Grounded Ollama chat failed: ${aiResponse.status} ${JSON.stringify(aiResult)}`);
+if (!aiResponse.ok || aiResult.provider !== 'ollama' || aiResult.reply.includes('Kết quả:') || aiResult.reply.includes('Giải thích:') || !aiResult.reply.includes('Phản hồi Ollama kiểm thử') || !aiResult.reply.includes('Nguồn tham khảo đã đối chiếu:') || !aiResult.reply.includes('https://example.com/bai-viet-kiem-chung')) throw new Error(`Grounded Ollama chat failed: ${aiResponse.status} ${JSON.stringify(aiResult)}`);
 if (aiResult.reply.includes('**') || /^\s*\*/m.test(aiResult.reply)) throw new Error(`Markdown cleanup failed: ${JSON.stringify(aiResult)}`);
 if (/[\u3400-\u9FFF]/u.test(aiResult.reply)) throw new Error(`Foreign script cleanup failed: ${JSON.stringify(aiResult)}`);
-const cookingResponse = await fetch(`${baseUrl}/ai/chat`, { method: 'POST', headers, body: JSON.stringify({ message: 'Cách nấu rau muống ngon?' }) });
-const cookingResult = await cookingResponse.json();
-if (!cookingResponse.ok || cookingResult.provider !== 'system' || cookingResult.source !== 'verified-food-guide' || cookingResult.reply.includes('rau muống nướng') || !cookingResult.reply.includes('Rau muống xào tỏi:') || !cookingResult.reply.includes('dienmayxanh.com/vao-bep/')) throw new Error(`Grounded cooking answer failed: ${cookingResponse.status} ${JSON.stringify(cookingResult)}`);
 const { enforceQuestionScope } = await import('../routes/ai.js');
 const scopedVegetableAnswer = enforceQuestionScope('Rau gì chứa nhiều vitamin D?', '- Cải xoăn: là một loại rau.\n- Lòng đỏ trứng: chứa vitamin D.\n- Cá hồi: chứa vitamin D.');
 if (!scopedVegetableAnswer.includes('Cải xoăn') || scopedVegetableAnswer.includes('trứng') || scopedVegetableAnswer.includes('Cá hồi')) throw new Error(`Question scope validation failed: ${scopedVegetableAnswer}`);
 const preciseRecipeAnswer = enforceQuestionScope('Cách nấu gà hấp cải bẹ xanh', '- Nguyên liệu: gà và cải bẹ xanh.\n- Ướp với 2m hạt nêm trong 30 phút.\n- Hấp gà cho đến khi chín.');
 if (preciseRecipeAnswer.includes('2m') || !preciseRecipeAnswer.includes('Nguyên liệu') || !preciseRecipeAnswer.includes('Hấp gà')) throw new Error(`Recipe precision validation failed: ${preciseRecipeAnswer}`);
+const { validateRecipeAgainstSource } = await import('../routes/ai.js');
+const { compactRecipeSource } = await import('../routes/ai.js');
+const compactedRecipe = compactRecipeSource('#### Nguyên Liệu:\n* Gà: 1/2 con\n* Gà: 1/2 con\n* Cải bẹ xanh: 15 cọng\n---\n#### Sơ Chế:\n* Ướp với 2m hạt nêm và 1/2M dầu hào.\n#### Thực Hiện:\n* Cắt miếng 6\\*2cm rồi hấp chín.\n#### Cách Dùng:\n* Dùng nóng.\n#### Mách Nhỏ:\n* Nội dung thừa.');
+if (compactedRecipe.includes('2m') || compactedRecipe.includes('1/2M') || !compactedRecipe.includes('2 muỗng cà phê') || !compactedRecipe.includes('1/2 muỗng canh') || compactedRecipe.includes('Nội dung thừa') || compactedRecipe.match(/Gà: 1\/2 con/g)?.length !== 1) throw new Error(`Recipe source compaction failed: ${compactedRecipe}`);
+const { answerStructuredRecipe } = await import('../routes/ai.js');
+const structuredRecipe = answerStructuredRecipe('Cách nấu gà hấp cải bẹ xanh', { description: compactedRecipe });
+if (!structuredRecipe?.includes('Nguyên liệu:') || !structuredRecipe.includes('Sơ chế:') || !structuredRecipe.includes('Các bước thực hiện:') || !structuredRecipe.includes('Cách dùng:') || !structuredRecipe.includes('6 x 2 cm') || structuredRecipe.includes('Mách nhỏ') || structuredRecipe.includes('- --')) throw new Error(`Structured recipe rendering failed: ${structuredRecipe}`);
+const alternateRecipeHeadings = answerStructuredRecipe('Cách nấu thịt kho', { description: '#### Thành Phần:\n Thịt heo: 500 g\n Trứng: 4 quả\n#### Chuẩn Bị:\n Rửa sạch và cắt thịt.\n#### Cách Chế Biến:\n Ướp thịt rồi kho đến khi mềm.\n#### Thành Phẩm:\n Dùng nóng với cơm.' });
+if (!alternateRecipeHeadings?.includes('Nguyên liệu:') || !alternateRecipeHeadings.includes('Sơ chế:') || !alternateRecipeHeadings.includes('Các bước thực hiện:') || !alternateRecipeHeadings.includes('Cách dùng:')) throw new Error(`Alternate recipe headings failed: ${alternateRecipeHeadings}`);
+const longRecipeHeadings = compactRecipeSource(`${'Nội dung menu không liên quan. '.repeat(300)}\n## Nguyên liệu làm thịt kho tàu\n- Thịt heo: 500 g\n- Trứng: 4 quả\n## Sơ chế thịt và trứng\n- Rửa sạch và cắt thịt.\n## Cách chế biến thịt kho tàu\n- Kho thịt đến khi mềm.\n## Thành phẩm và thưởng thức\n- Dùng nóng.`);
+if (longRecipeHeadings.startsWith('Nội dung menu') || !longRecipeHeadings.includes('#### Nguyên Liệu:') || !longRecipeHeadings.includes('#### Sơ Chế:') || !longRecipeHeadings.includes('#### Thực Hiện:') || !longRecipeHeadings.includes('#### Cách Dùng:')) throw new Error(`Long recipe headings were not normalized: ${longRecipeHeadings}`);
+const decomposedNumberedHeadings = compactRecipeSource('Nội dung chặn tuổi.\n### 1.1. Nguyên liệu cần thiết\n- Gà: 1 con\n- Bột mì: 2 cốc\n### 1.2. Cách chế biến\nBước 1: Chặt gà.\nBước 2: Tẩm bột.\nBước 3: Chiên chín.'.normalize('NFD'));
+const decomposedRecipe = answerStructuredRecipe('Cách nấu gà rán', { description: decomposedNumberedHeadings });
+if (decomposedNumberedHeadings.includes('Nội dung chặn tuổi') || !decomposedRecipe?.includes('Nguyên liệu:') || !decomposedRecipe.includes('Sơ chế:\n- Chặt gà.') || !decomposedRecipe.includes('- Tẩm bột.') || !decomposedRecipe.includes('- Chiên chín.')) throw new Error(`Decomposed numbered recipe failed: ${decomposedRecipe}`);
+const numberedRecipe = answerStructuredRecipe('Cách nấu thịt kho', { description: '#### Nguyên Liệu:\n Thịt heo: 500 g\n Trứng: 4 quả\n#### Thực Hiện:\n#### Bước 1: Sơ chế nguyên liệu\n Rửa sạch và cắt thịt.\n#### Bước 2: Ướp thịt\n Ướp thịt trong 30 phút.\n#### Bước 3: Nấu thịt kho\n Kho đến khi thịt mềm.\n#### END' });
+if (!numberedRecipe?.includes('Sơ chế:\n- Rửa sạch và cắt thịt.') || !numberedRecipe.includes('Ướp thịt: Ướp thịt trong 30 phút.') || !numberedRecipe.includes('Nấu thịt kho: Kho đến khi thịt mềm.')) throw new Error(`Numbered recipe steps failed: ${numberedRecipe}`);
+const boundedRecipe = answerStructuredRecipe('Cách nấu thịt kho', { description: '#### Nguyên Liệu:\n Thịt heo: 500 g\n Trứng: 4 quả\n#### Thực Hiện:\n#### Bước 1: Sơ chế\n Rửa thịt.\n#### Bước 2: Kho thịt\n Kho đến khi mềm.\n## Bí quyết kho ngon\n Nội dung không thuộc quy trình.' });
+if (!boundedRecipe?.includes('Kho thịt: Kho đến khi mềm.') || boundedRecipe.includes('Nội dung không thuộc quy trình')) throw new Error(`Recipe step boundary failed: ${boundedRecipe}`);
+const plainStepRecipe = answerStructuredRecipe('Cách nấu rau muống xào tỏi', { description: '#### Nguyên Liệu:\n Rau muống: 1 bó\n Tỏi: 4 nhánh\n#### Thực Hiện:\nBước 1: Nhặt rau, rửa sạch và để ráo.\n\nBước 2: Phi thơm tỏi.\n\nBước 3: Cho rau vào xào chín tới.\n## Lưu ý\n Không thuộc công thức.' });
+if (!plainStepRecipe?.includes('Sơ chế:\n- Nhặt rau, rửa sạch và để ráo.') || !plainStepRecipe.includes('- Phi thơm tỏi.') || !plainStepRecipe.includes('- Cho rau vào xào chín tới.') || plainStepRecipe.includes('Không thuộc công thức')) throw new Error(`Plain recipe steps failed: ${plainStepRecipe}`);
+const recipeSource = {
+  title: 'Cách làm gà hấp cải bẹ xanh',
+  description: `${'Gà ta, cải bẹ xanh, hành, tỏi, muối và tiêu. '.repeat(12)}Sơ chế gà và cải bẹ xanh. Ướp gà trong 30 phút. Đặt gà vào xửng và hấp đến khi chín. Bắc chảo phi hành tỏi để làm nước sốt rồi rưới lên gà.`,
+};
+const checkedRecipe = validateRecipeAgainstSource('Cách nấu gà hấp cải bẹ xanh', 'Nguyên liệu:\n- Gà ta\n- Cải bẹ xanh\n- Hành và tỏi\nSơ chế:\n- Làm sạch gà và cải.\nCác bước thực hiện:\n- Hấp gà vừa: Bắc chảo phi hành tỏi để làm nước sốt.\n- Đặt gà vào xửng và hấp 30 phút.', recipeSource);
+if (checkedRecipe.startsWith('Chưa có đủ nguồn') || checkedRecipe.includes('Hấp gà vừa: Bắc chảo') || !checkedRecipe.includes('Làm nước sốt:')) throw new Error(`Recipe step labeling failed: ${checkedRecipe}`);
+const incompleteRecipe = validateRecipeAgainstSource('Cách nấu gà hấp cải bẹ xanh', '- Chuẩn bị xửng hấp.\n- Xếp cải bẹ xanh vào xửng.\nCác bước thực hiện:\n- Đặt gà vào xửng và hấp 10 phút.', recipeSource);
+if (!incompleteRecipe.startsWith('Chưa có đủ nguồn')) throw new Error(`Incomplete recipe was accepted: ${incompleteRecipe}`);
 const { selectSourcesForQuestion } = await import('../routes/ai.js');
 if (selectSourcesForQuestion('Cách nấu canh rau', [{ score: 0.9 }, { score: 0.8 }]).length !== 1) throw new Error('Recipe must use one primary source');
 const { isFollowUpQuestion } = await import('../routes/ai.js');

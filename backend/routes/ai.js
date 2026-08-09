@@ -6,30 +6,110 @@ const router = Router();
 
 const normalizeVietnamese = (value) => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase();
 
+export function compactRecipeSource(value) {
+  let text = String(value || '').normalize('NFC').replace(/\r/g, '');
+  text = text
+    .replace(/^#{1,6}\s*(?:\d+(?:\.\d+)*\.?\s*)?(?:Nguyên\s*Liệu|Chuẩn\s*Bị\s*Nguyên\s*Liệu|Thành\s*Phần)[^\n]*$/gimu, '#### Nguyên Liệu:')
+    .replace(/^#{1,6}\s*(?:\d+(?:\.\d+)*\.?\s*)?(?:Sơ\s*Chế|Chuẩn\s*Bị)(?!\s*Nguyên\s*Liệu)[^\n]*$/gimu, '#### Sơ Chế:')
+    .replace(/^#{1,6}\s*(?:\d+(?:\.\d+)*\.?\s*)?(?:Thực\s*Hiện|Cách\s*Làm|Cách\s*Chế\s*Biến|Cách\s*Chế\s*Biến|Các\s*Bước)[^\n]*$/gimu, '#### Thực Hiện:')
+    .replace(/^#{1,6}\s*(?:\d+(?:\.\d+)*\.?\s*)?(?:Cách\s*Dùng|Thành\s*Phẩm|Thưởng\s*Thức)[^\n]*$/gimu, '#### Cách Dùng:');
+  let sawIngredientHeading = false;
+  text = text.split('\n').map((line) => {
+    if (!/^#{1,6}\s*/.test(line)) return line;
+    const heading = normalizeVietnamese(line)
+      .replace(/^#{1,6}\s*/, '')
+      .replace(/^\d+(?:\.\d+)*\.?\s*/, '')
+      .trim();
+    if (/^(nguyen lieu|chuan bi nguyen lieu|thanh phan)\b/.test(heading)) {
+      sawIngredientHeading = true;
+      return '#### Nguyên Liệu:';
+    }
+    if (sawIngredientHeading && /^(so che|chuan bi)\b/.test(heading)) return '#### Sơ Chế:';
+    if (sawIngredientHeading && /^(thuc hien|cach lam|cach che bien|cac buoc)\b/.test(heading)) return '#### Thực Hiện:';
+    if (sawIngredientHeading && /^(cach dung|thanh pham|thuong thuc)\b/.test(heading)) return '#### Cách Dùng:';
+    return line;
+  }).join('\n');
+  const start = text.search(/(?:#{1,6}\s*)?(?:Nguyên\s*Liệu|Chuẩn\s*Bị(?:\s*Nguyên\s*Liệu)?)\s*:/iu);
+  if (start >= 0) text = text.slice(start);
+  const end = text.search(/\n(?:#{1,6}\s*)?(?:Mách\s*Nhỏ|Lưu\s*Ý|Tags|Công thức bạn có thể thích|Bài viết liên quan)/iu);
+  if (end > 0) text = text.slice(0, end);
+  text = text
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/^(?:>\s*)+/gm, '')
+    .replace(/\b(\d+(?:[.,/]\d+)?)M\b/g, '$1 muỗng canh')
+    .replace(/\b(\d+(?:[.,/]\d+)?)m\b/g, '$1 muỗng cà phê')
+    .replace(/\bcy\b/giu, 'cây')
+    .replace(/\bngm\b/giu, 'ngâm')
+    // Ranh giới \b của JavaScript không nhận diện đầy đủ chữ có dấu tiếng Việt.
+    .replace(/đường nu/giu, 'đường nâu')
+    .replace(/Khu này/gu, 'Khâu này')
+    .replace(/chn giò/giu, 'chân giò')
+    .replace(/riêu liu/giu, 'riu riu')
+    .replace(/bao lu/giu, 'bao lâu')
+    .replace(/Đy/gu, 'Đây')
+    .replace(/cn bằng/giu, 'cân bằng')
+    .replace(/hm nóng/giu, 'hâm nóng')
+    .replace(/Để lừa vừa/giu, 'Để lửa vừa')
+    .replace(/tỏi ngã vàng/giu, 'tỏi ngả vàng')
+    .replace(/(\d)\s*(g|ml|cm)\b/giu, '$1 $2')
+    .replace(/(\d)\s*\\?\*\s*(\d)/g, '$1 x $2')
+    .replace(/\*{1,3}/g, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+
+  // Một số trang lặp nguyên liệu hai lần cho giao diện desktop/mobile.
+  const prepIndex = text.search(/\n(?:#{1,6}\s*)?(?:Sơ\s*Chế|Chuẩn\s*Bị)\s*:/iu);
+  if (prepIndex > 0) {
+    const ingredientBlock = text.slice(0, prepIndex);
+    const lines = ingredientBlock.split('\n');
+    const seen = new Set();
+    const uniqueLines = lines.filter((line) => {
+      const key = normalizeVietnamese(line).replace(/\s+/g, ' ').trim();
+      if (!key || /(?:nguyen\s*lieu|chuan\s*bi)\s*:/.test(key)) return true;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    text = `${uniqueLines.join('\n')}\n${text.slice(prepIndex + 1)}`;
+  }
+  return text.slice(0, 6500);
+}
+
 async function searchWebSources(question) {
   if (!config.ai.tavilyApiKey) return [];
   const normalized = normalizeVietnamese(question);
   const healthQuestion = /(suc khoe|benh|tao bon|tre em|em be|dinh duong|vitamin|thuoc|trieu chung)/.test(normalized);
+  const recipeQuestion = /(cach nau|cach lam|cong thuc|che bien)/.test(normalized);
   const asksForExplanation = /(tai sao|vi sao|tu dau ma ra|nguyen nhan|do dau)/.test(normalized);
   const farmingQuestion = /(trong|gieo|phan bon|cham soc|thu hoach|sau benh)/.test(normalized);
   const cropMatch = normalized.match(/\b(?:trong|gieo|cham soc|thu hoach)\s+([a-z0-9 ]{3,40})/);
   const cropSubject = cropMatch?.[1]?.replace(/\b(nhu the nao|ra sao|the nao|tai nha|ky thuat).*$/, '').trim();
-  const expandedQuery = healthQuestion
+  const recipeSynonyms = normalized.includes(' ran') ? ' chiên giòn' : '';
+  const expandedQuery = recipeQuestion
+    ? `"${question}"${recipeSynonyms} công thức nguyên liệu sơ chế các bước thực hiện trả lời bằng tiếng Việt`
+    : healthQuestion
     ? `${question} tư vấn chuyên gia dinh dưỡng`
     : asksForExplanation
       ? `${question} giải thích nguyên nhân khoa học`
       : farmingQuestion
         ? `"${question}" hướng dẫn kỹ thuật nông nghiệp`
-        : question;
+        : /(khi nao|dieu kien|truong hop)/.test(normalized)
+          ? `${question} điều kiện cần và đủ tất cả trường hợp`
+          : question;
   const attempts = [
     { query: expandedQuery, search_depth: 'advanced' },
+    ...(recipeQuestion ? [{ query: `${question} nguyên liệu sơ chế từng bước tiếng Việt`, search_depth: 'advanced', trustedRecipe: true }] : []),
     { query: farmingQuestion ? `"${question}"` : question, search_depth: 'basic' },
     ...(farmingQuestion ? [{ query: `${question} khuyến nông kỹ thuật canh tác`, search_depth: 'basic' }] : []),
   ];
   for (const attempt of attempts) {
     try {
-      const requestBody = { ...attempt, max_results: 6, include_answer: true, include_raw_content: false };
+      const requestBody = { ...attempt, max_results: 6, include_answer: true, include_raw_content: true };
+      delete requestBody.trustedRecipe;
       if (healthQuestion && attempt.search_depth === 'advanced') requestBody.include_domains = ['vinmec.com', 'medlatec.vn', 'tamanhhospital.vn', 'hellobacsi.com'];
+      if (recipeQuestion && attempt.trustedRecipe) requestBody.include_domains = ['dienmayxanh.com', 'cet.edu.vn', 'huongnghiepaau.com', 'daotaobeptruong.vn', 'monngonmoingay.com'];
       const response = await fetch(config.ai.tavilySearchUrl, {
         method: 'POST',
         headers: { authorization: `Bearer ${config.ai.tavilyApiKey}`, 'content-type': 'application/json' },
@@ -38,14 +118,27 @@ async function searchWebSources(question) {
       });
       if (!response.ok) continue;
       const result = await response.json();
-      const searchSummary = String(result.answer || '').trim().slice(0, 700);
-      const sources = (result.results || []).map((source, index) => ({ title: String(source.title || '').trim().slice(0, 240), url: String(source.url || '').trim(), description: `${index === 0 && searchSummary ? `Tóm tắt tìm kiếm đã đối chiếu: ${searchSummary}\n` : ''}${String(source.content || '').trim()}`.slice(0, 900), score: Number(source.score || 0) })).filter((source) => {
+      const searchSummary = String(result.answer || '').trim().slice(0, 1400);
+      const sources = (result.results || []).map((source, index) => {
+        const sourceText = recipeQuestion
+          ? compactRecipeSource(source.raw_content || source.content || '')
+          : String(source.raw_content || source.content || '').trim().slice(0, 1800);
+        return { title: String(source.title || '').trim().slice(0, 240), url: String(source.url || '').trim(), description: sourceText, summary: index === 0 ? searchSummary : '', score: Number(source.score || 0) };
+      }).filter((source) => {
         try {
           const parsed = new URL(source.url);
           const normalizedSourceIdentity = normalizeVietnamese(`${source.title} ${parsed.pathname.replace(/[-_/]+/g, ' ')}`);
           const cropTokens = String(cropSubject || '').split(/\s+/).filter((token) => token.length >= 3);
           const hasCropSubject = !farmingQuestion || !cropTokens.length || cropTokens.every((token) => normalizedSourceIdentity.includes(token));
-          return parsed.protocol === 'https:' && source.title && source.description && source.score >= 0.15 && hasCropSubject && !/(^|\.)reddit\.com$/i.test(parsed.hostname);
+          const recipeTokens = normalized.split(/\s+/).filter((token) => token.length >= 2 && !['cach', 'nau', 'lam', 'cong', 'thuc', 'che', 'bien'].includes(token));
+          const recipeMatches = recipeTokens.filter((token) => token === 'ran'
+            ? /\b(ran|chien)\b/.test(normalizedSourceIdentity)
+            : normalizedSourceIdentity.includes(token)).length;
+          const hasRecipeSubject = !recipeQuestion || recipeTokens.length === 0 || recipeMatches >= Math.min(3, recipeTokens.length);
+          // Không loại bài chỉ vì trang dùng tiêu đề khác. Lớp dựng và kiểm
+          // chứng phía sau vẫn bắt buộc đủ nguyên liệu, sơ chế và thực hiện.
+          const hasRecipeDetail = !recipeQuestion || source.description.length >= 500;
+          return parsed.protocol === 'https:' && source.title && source.description && source.score >= 0.15 && hasCropSubject && hasRecipeSubject && hasRecipeDetail && !/(^|\.)reddit\.com$/i.test(parsed.hostname);
         } catch { return false; }
       }).sort((a, b) => b.score - a.score).slice(0, 5);
       if (sources.length) return sources;
@@ -62,30 +155,13 @@ export function selectSourcesForQuestion(question, sources) {
   return sources.slice(0, 3);
 }
 
-async function findReferenceLink(question) {
-  const normalized = normalizeVietnamese(question);
-  if (/green argric|quan tri|chu vuon|ky thuat|thiet bi|khu vuc/.test(normalized)) return 'https://github.com/mario050610/GreenArgric';
-  if (normalized.includes('rau muong')) {
-    if (normalized.includes('luoc')) return 'https://www.dienmayxanh.com/vao-bep/cach-luoc-rau-muong-xanh-muot-gion-ngon-khong-bi-tham-den-cuc-10244';
-    if (normalized.includes('xao tom')) return 'https://www.dienmayxanh.com/vao-bep/cach-lam-rau-muong-xao-tom-tuoi-gion-ngon-doi-vi-cho-bua-com-11892';
-    return 'https://www.dienmayxanh.com/vao-bep/tong-hop-cac-mon-an-tu-rau-muong-thom-ngon-don-gian-ai-cung-14385';
-  }
-  let searchQuery = `bài viết hướng dẫn ${question} -site:wikipedia.org`;
-  if (/nau|mon an|cong thuc|xao|luoc|chien|hap|am thuc|rau/.test(normalized)) {
-    searchQuery = `site:dienmayxanh.com/vao-bep ${question}`;
-  } else if (/suc khoe|benh|dinh duong|thuoc|trieu chung/.test(normalized)) {
-    searchQuery = `site:vinmec.com ${question}`;
-  }
-  return `https://www.google.com/search?q=${encodeURIComponent(searchQuery)}`;
-}
-
 const foreignScriptPattern = /[\u0370-\u052F\u0590-\u0E7F\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uAC00-\uD7AF\uF900-\uFAFF]/u;
 const foreignScriptGlobalPattern = /[\u0370-\u052F\u0590-\u0E7F\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uAC00-\uD7AF\uF900-\uFAFF]/gu;
 const containsForeignScript = (value) => foreignScriptPattern.test(String(value || ''));
 
 async function requestOllama(messages, verificationContext = {}) {
   const call = async (requestMessages) => {
-    const response = await fetch(`${config.ai.ollamaUrl}/api/chat`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: config.ai.ollamaModel, messages: requestMessages, stream: false, keep_alive: '5m', options: { temperature: 0.1, top_p: 0.85, repeat_penalty: 1.1, num_ctx: 2048 } }) });
+    const response = await fetch(`${config.ai.ollamaUrl}/api/chat`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: config.ai.ollamaModel, messages: requestMessages, stream: false, keep_alive: '5m', options: { temperature: 0.05, top_p: 0.8, repeat_penalty: 1.08, num_ctx: 8192 } }) });
     const result = await response.json();
     return { response, result };
   };
@@ -95,8 +171,8 @@ async function requestOllama(messages, verificationContext = {}) {
     // Tách bước biên tập khỏi lịch sử hội thoại. Model nhỏ thường trộn các câu
     // trả lời cũ vào bản nháp nếu toàn bộ lịch sử được gửi lại ở bước này.
     const edited = await call([
-      { role: 'system', content: 'Bạn là bộ kiểm chứng câu trả lời tiếng Việt. Phải loại bỏ mọi ý không trả lời đúng loại đối tượng người dùng hỏi và mọi dữ kiện không được nguồn cung cấp. Không được bổ sung kiến thức riêng. Chỉ xuất câu trả lời cuối cùng dành cho người dùng; tuyệt đối không nhận xét, khen, chấm điểm hoặc nhắc đến bản nháp và quá trình kiểm chứng.' },
-      { role: 'user', content: `CÂU HỎI HIỆN TẠI:\n${verificationContext.question || ''}\n\nNGUỒN ĐƯỢC PHÉP DÙNG (nguồn đầu tiên là nguồn chính):\n${JSON.stringify(verificationContext.sources || [])}\n\nHãy sửa bản nháp bên dưới thành CÂU TRẢ LỜI CUỐI CÙNG. Nếu câu hỏi giới hạn một loại đối tượng, phải xóa mọi mục thuộc loại khác. Được phép diễn đạt lại và tóm tắt bằng tiếng Việt tự nhiên, không yêu cầu trùng nguyên văn; chỉ cần ý nghĩa được ít nhất một nguồn hỗ trợ và trả lời đúng trọng tâm. Với công thức nấu ăn: chỉ dùng định lượng và quy trình của nguồn chính, tuyệt đối không ghép định lượng từ nhiều bài; giữ nguyên con số và đơn vị đầy đủ; xóa mọi định lượng viết tắt, mơ hồ hoặc không xuất hiện rõ trong nguồn; không tự đoán số lượng. Trình bày lần lượt "Nguyên liệu", "Sơ chế", "Các bước thực hiện"; mỗi thao tác là một bước riêng, rõ chủ ngữ và hành động. Chỉ trả lời "Chưa có đủ nguồn phù hợp để trả lời chính xác câu hỏi này." khi toàn bộ nguồn thực sự không chứa dữ kiện trả lời; không từ chối chỉ vì cách diễn đạt của bản nháp khác câu chữ trong nguồn. Chỉ dùng tiếng Việt tự nhiên, đúng chính tả; không viết dính từ; không dùng ký tự lỗi hoặc Markdown; không thêm thông tin mới. KHÔNG được nhận xét bản nháp. KHÔNG mở đầu bằng lời khen. Chỉ xuất nội dung trả lời trực tiếp câu hỏi.\n\nBẢN NHÁP:\n${draft}` },
+      { role: 'system', content: 'Bạn là bộ phản biện và kiểm chứng câu trả lời tiếng Việt. Không được dùng kiến thức ngoài nguồn. Trước khi viết đáp án, hãy âm thầm đối chiếu từng biến số, giả thiết, điều kiện, lượng từ và yêu cầu trong câu hỏi với nguồn; kiểm tra điều kiện cần, điều kiện đủ, trường hợp biên và phản ví dụ có liên quan. Nếu bản nháp thiếu một điều kiện làm thay đổi kết luận, phải bổ sung từ nguồn. Nếu bản nháp khẳng định quá mức, phải thu hẹp đúng theo nguồn. Chỉ xuất câu trả lời cuối cùng; không xuất checklist, nhận xét, lời khen, điểm số hay quá trình suy luận.' },
+      { role: 'user', content: `CÂU HỎI HIỆN TẠI:\n${verificationContext.question || ''}\n\nNGUỒN ĐƯỢC PHÉP DÙNG (nguồn đầu tiên là nguồn chính):\n${JSON.stringify(verificationContext.sources || [])}\n\nHãy sửa bản nháp bên dưới thành CÂU TRẢ LỜI CUỐI CÙNG. Phải trả lời đủ mọi vế của câu hỏi. Với câu hỏi hỏi khi nào, điều kiện hoặc phân loại: nêu điều kiện cần và đủ nếu nguồn cho phép; giữ đủ mọi biến số và giả thiết; xét trường hợp biên và các trường hợp đối lập trực tiếp để kết luận không mơ hồ. Không được biến điều kiện cần thành điều kiện đủ hoặc ngược lại. Nếu câu hỏi giới hạn một loại đối tượng, phải xóa mọi mục thuộc loại khác. Được phép diễn đạt lại trung thành với nguồn. Với công thức nấu ăn: chỉ dùng định lượng và quy trình của nguồn chính, không ghép nhiều bài; giữ nguyên con số và đơn vị; trình bày lần lượt Nguyên liệu, Sơ chế, Các bước thực hiện. Chỉ trả lời "Chưa có đủ nguồn phù hợp để trả lời chính xác câu hỏi này." khi nguồn thực sự thiếu dữ kiện. Chỉ dùng tiếng Việt tự nhiên, không dùng ký tự lỗi hoặc Markdown, không thêm thông tin ngoài nguồn. Chỉ xuất nội dung trả lời trực tiếp.\n\nBẢN NHÁP:\n${draft}` },
     ]);
     const editedText = String(edited.result?.message?.content || '').trim();
     const verifierReturnedCommentary = /(bản nháp|điểm cộng|diễn đạt tự nhiên|đã tóm tắt chính xác|tuyệt vời|nội dung trình bày|không bị gò ép)/i.test(editedText);
@@ -120,16 +196,43 @@ async function requestSimpleGroundedAnswer(question, sources) {
       model: config.ai.ollamaModel,
       stream: false,
       keep_alive: '5m',
-      options: { temperature: 0.1, top_p: 0.85, num_ctx: 2048 },
+      options: { temperature: 0.1, top_p: 0.85, num_ctx: 4096 },
       messages: [
         { role: 'system', content: 'Trả lời trực tiếp bằng tiếng Việt, chỉ dùng dữ kiện trong nguồn. Không nhận xét nguồn, không đoán và không dùng Markdown.' },
-        { role: 'user', content: `Câu hỏi: ${question}\n\nNguồn đã kiểm chứng:\n${sources.map((source) => `${source.title}\n${source.description}`).join('\n\n')}\n\nHãy trả lời đúng trọng tâm. Nếu là hướng dẫn, trình bày thành các bước rõ ràng.` },
+        { role: 'user', content: `Câu hỏi: ${question}\n\nNguồn đã kiểm chứng:\n${sources.map((source) => `${source.title}\n${source.description}`).join('\n\n')}\n\nHãy trả lời đúng trọng tâm và đầy đủ. Nếu câu hỏi hỏi "khi nào", "điều kiện" hoặc phân loại trường hợp, phải nêu điều kiện cần và đủ, không bỏ sót biến số hay trường hợp biên; nêu ngắn gọn các trường hợp đối lập liên quan để kiểm tra kết luận. Nếu là công thức, chỉ dùng nguồn đầu tiên; trình bày đủ Nguyên liệu, Sơ chế và Các bước thực hiện theo đúng thứ tự của bài; không tự thêm định lượng hoặc thao tác.` },
       ],
     }),
     signal: AbortSignal.timeout(60000),
   });
   const result = await response.json();
   return response.ok ? String(result.message?.content || '').trim() : '';
+}
+
+const needsCompletenessExpansion = (question, answer) => {
+  const normalized = normalizeVietnamese(question);
+  if (!/(khi nao|dieu kien|truong hop|phan loai|so sanh|tai sao|vi sao)/.test(normalized)) return false;
+  const substantiveLines = formatPlainAnswer(answer).split('\n').filter((line) => line.trim().length >= 12);
+  return substantiveLines.length < 3;
+};
+
+async function requestCompleteGroundedAnswer(question, sources) {
+  const response = await fetch(`${config.ai.ollamaUrl}/api/chat`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      model: config.ai.ollamaModel,
+      stream: false,
+      keep_alive: '5m',
+      options: { temperature: 0.05, top_p: 0.8, num_ctx: 8192 },
+      messages: [
+        { role: 'system', content: 'Bạn là chuyên gia tổng hợp câu trả lời có kiểm chứng. Chỉ dùng nguồn được cung cấp. Không được bỏ sót giả thiết, biến số, điều kiện cần, điều kiện đủ hoặc trường hợp biên làm thay đổi kết luận. Không xuất suy luận nội bộ, lời khen hay nhận xét nguồn.' },
+        { role: 'user', content: `Câu hỏi: ${question}\n\nNguồn:\n${sources.map((source) => `${source.title}\n${source.description}`).join('\n\n')}\n\nHãy trả lời bằng tiếng Việt theo đúng ba phần sau:\nKết quả: trả lời chính xác câu hỏi.\nGiải thích: giải thích vì sao dựa trên nguồn.\nCác trường hợp liên quan: liệt kê các trường hợp đối lập hoặc trường hợp biên trực tiếp để chứng minh kết luận là đầy đủ.\nNếu nguồn không đủ cho một phần, ghi rõ phần đó chưa đủ nguồn; tuyệt đối không tự đoán.` },
+      ],
+    }),
+    signal: AbortSignal.timeout(60000),
+  });
+  const result = await response.json();
+  return response.ok ? formatPlainAnswer(result.message?.content || '') : '';
 }
 
 const formatPlainAnswer = (answer) => String(answer || '')
@@ -163,31 +266,152 @@ export function enforceQuestionScope(question, answer) {
   return meaningfulLines.length ? meaningfulLines.join('\n').trim() : 'Chưa có đủ nguồn phù hợp để trả lời chính xác câu hỏi này.';
 }
 
+export function validateRecipeAgainstSource(question, answer, source) {
+  const normalizedQuestion = normalizeVietnamese(question);
+  if (!/(cach nau|cach lam|cong thuc|che bien)/.test(normalizedQuestion)) return answer;
+  const sourceText = normalizeVietnamese(`${source?.title || ''}\n${source?.description || ''}`);
+  if (sourceText.length < 500) return 'Chưa có đủ nguồn phù hợp để trả lời chính xác câu hỏi này.';
+
+  let section = '';
+  const actionVerbs = ['hap', 'xao', 'chien', 'nuong', 'luoc', 'kho', 'rang', 'phi', 'tron', 'uop', 'so che', 'rua', 'cat', 'thai'];
+  const sourceNumbers = new Set(sourceText.match(/\d+(?:[.,/]\d+)?/g) || []);
+  const kept = [];
+  let ingredientLines = 0;
+  let procedureLines = 0;
+
+  for (const originalLine of repairVietnameseExtraction(answer).split('\n')) {
+    let line = originalLine.trim();
+    if (!line) { kept.push(''); continue; }
+    if (/^(?:-\s*)?nguyên liệu\s*:/iu.test(line)) section = 'ingredients';
+    else if (/^(?:-\s*)?sơ chế\s*:/iu.test(line)) section = 'prep';
+    else if (/^(?:-\s*)?(?:các bước thực hiện|thực hiện)\s*:/iu.test(line)) {
+      section = 'steps';
+      line = 'Các bước thực hiện:';
+    }
+
+    if (/\b\d+(?:[.,/]\d+)?\s*m\b/iu.test(line)) continue;
+    const contentWithoutIndex = line.replace(/^\s*[-–]?\s*\d+[.)]\s*/, '');
+    const unsupportedNumber = (contentWithoutIndex.match(/\d+(?:[.,/]\d+)?/g) || [])
+      .some((number) => !sourceNumbers.has(normalizeVietnamese(number)));
+    if (unsupportedNumber) continue;
+
+    if (section === 'steps' && !/^Các bước thực hiện:/u.test(line)) {
+      const normalizedLine = normalizeVietnamese(line);
+      const unsupportedAction = actionVerbs.some((verb) => normalizedLine.includes(verb) && !sourceText.includes(verb));
+      if (unsupportedAction) continue;
+      if (normalizedLine.includes('bac chao') && /^\s*[-–]?\s*hap\b/.test(normalizedLine)) {
+        line = line.replace(/^\s*[-–]?\s*Hấp[^:]*:/iu, '- Làm nước sốt:');
+      }
+      procedureLines += 1;
+    } else if (section === 'ingredients' && !/nguyên liệu\s*:/iu.test(line)) ingredientLines += 1;
+    else if (section === 'prep' && !/sơ chế\s*:/iu.test(line)) procedureLines += 1;
+    kept.push(line);
+  }
+
+  const output = kept.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  const hasRequiredSections = /nguyên liệu\s*:/iu.test(output)
+    && /sơ chế\s*:/iu.test(output)
+    && /các bước thực hiện\s*:/iu.test(output);
+  return hasRequiredSections && ingredientLines >= 2 && procedureLines >= 2
+    ? output
+    : 'Chưa có đủ nguồn phù hợp để trả lời chính xác câu hỏi này.';
+}
+
+export function answerStructuredRecipe(question, source) {
+  if (!/(cach nau|cach lam|cong thuc|che bien)/.test(normalizeVietnamese(question))) return null;
+  const text = String(source?.description || '');
+  const section = (startPattern, endPattern) => {
+    const start = text.search(startPattern);
+    if (start < 0) return [];
+    const bodyStart = text.indexOf('\n', start);
+    if (bodyStart < 0) return [];
+    const rest = text.slice(bodyStart + 1);
+    const end = rest.search(endPattern);
+    return (end >= 0 ? rest.slice(0, end) : rest)
+      .split('\n')
+      .map((line) => /^\s*[-–]{3,}\s*$/.test(line) ? '' : line.replace(/^\s*[-*]\s*/, '').trim())
+      .filter((line) => line
+        && !/^(?:muỗng|gram|m\s*:\s*muỗng)/iu.test(line)
+        && !/^#{1,6}/.test(line));
+  };
+  const ingredientHeading = /#{1,6}\s*(?:Nguyên\s*Liệu|Chuẩn\s*Bị\s*Nguyên\s*Liệu|Thành\s*Phần)\s*:/iu;
+  const preparationHeading = /\n#{1,6}\s*(?:Sơ\s*Chế|Chuẩn\s*Bị)\s*:/iu;
+  const stepsHeading = /\n#{1,6}\s*(?:Thực\s*Hiện|Cách\s*Làm|Cách\s*Chế\s*Biến|Các\s*Bước\s*Thực\s*Hiện)\s*:/iu;
+  const servingHeading = /\n#{1,6}\s*(?:Cách\s*Dùng|Thành\s*Phẩm|Thưởng\s*Thức)\s*:/iu;
+  const ingredients = section(ingredientHeading, preparationHeading.test(text) ? preparationHeading : stepsHeading);
+  let preparation = section(/#{1,6}\s*(?:Sơ\s*Chế|Chuẩn\s*Bị)\s*:/iu, stepsHeading);
+  let steps = section(/#{1,6}\s*(?:Thực\s*Hiện|Cách\s*Làm|Cách\s*Chế\s*Biến|Các\s*Bước\s*Thực\s*Hiện)\s*:/iu, servingHeading);
+  const serving = section(/#{1,6}\s*(?:Cách\s*Dùng|Thành\s*Phẩm|Thưởng\s*Thức)\s*:/iu, /\n#{1,6}/iu);
+  const numberedSteps = [];
+  let currentStep = null;
+  for (const rawLine of text.split('\n')) {
+    const line = rawLine.trim();
+    const stepMatch = line.match(/^(?:#{1,6}\s*)?Bước\s*(\d+)\s*:\s*(.*)$/iu);
+    if (stepMatch) {
+      if (currentStep) numberedSteps.push(currentStep);
+      const stepNumber = Number(stepMatch[1]);
+      if (numberedSteps.length && stepNumber <= numberedSteps.at(-1).number) {
+        currentStep = null;
+        break;
+      }
+      currentStep = { number: stepNumber, title: stepMatch[2].trim(), body: [] };
+      continue;
+    }
+    if (currentStep && /^#{1,6}\s*/.test(line)) {
+      numberedSteps.push(currentStep);
+      currentStep = null;
+      break;
+    }
+    if (currentStep && /^(xem them|quan tri|tim hieu ngay)\b/.test(normalizeVietnamese(line))) {
+      numberedSteps.push(currentStep);
+      currentStep = null;
+      break;
+    }
+    if (currentStep && line) currentStep.body.push(line.replace(/^[-*]\s*/, '').trim());
+  }
+  if (currentStep) numberedSteps.push(currentStep);
+  let preparationStepNumber = null;
+  if (!preparation.length && numberedSteps.length) {
+    const explicitPrepStep = numberedSteps.find((item) => /^(so che|chuan bi)(?: nguyen lieu)?[.:]?$/i.test(normalizeVietnamese(item.title).trim()));
+    const prepStep = explicitPrepStep || numberedSteps[0];
+    preparation = explicitPrepStep ? prepStep.body : [prepStep.title, ...prepStep.body].filter(Boolean);
+    preparationStepNumber = prepStep.number;
+  }
+  if (numberedSteps.length) {
+    steps = numberedSteps
+      .filter((item) => item.number !== preparationStepNumber)
+      .sort((a, b) => a.number - b.number)
+      .map((item) => item.body.length ? `${item.title}: ${item.body.join(' ')}` : item.title);
+  }
+  if (ingredients.length < 2 || preparation.length < 1 || steps.length < 1) return null;
+  return [
+    'Nguyên liệu:', ...ingredients.map((line) => `- ${line}`), '',
+    'Sơ chế:', ...preparation.map((line) => `- ${line}`), '',
+    'Các bước thực hiện:', ...steps.map((line) => `- ${line}`),
+    ...(serving.length ? ['', 'Cách dùng:', ...serving.map((line) => `- ${line}`)] : []),
+  ].join('\n').trim();
+}
+
 export function isFollowUpQuestion(question) {
   const normalized = normalizeVietnamese(question).trim();
   return /^(con|con lai|the con|vay con|nguoi do|cai do|no thi|y tren|truong hop do)\b/.test(normalized)
     || /\b(nhu tren|vua noi|vua neu|noi tiep|them nua)\b/.test(normalized);
 }
 
-const appendReference = (answer, link) => `${formatPlainAnswer(answer)}\n\nTham khảo thêm tại link: ${link}`;
 const appendVerifiedSources = (answer, sources) => {
   const formatted = formatPlainAnswer(answer);
-  if (/^Chưa có đủ nguồn phù hợp/i.test(formatted) || !sources.length) return formatted;
-  return `${formatted}\n\nNguồn tham khảo đã đối chiếu:\n${sources.map((source) => `- ${source.title}: ${source.url}`).join('\n')}`;
+  if (/^Chưa có đủ nguồn phù hợp/i.test(formatted)) return formatted;
+  const resultMatch = formatted.match(/^(?:Kết quả|Kết luận trực tiếp|Kết luận)\s*:\s*([\s\S]*?)(?=\n(?:Giải thích|Các trường hợp liên quan)\s*:|$)/iu);
+  const explanationMatch = formatted.match(/\nGiải thích\s*:\s*([\s\S]*?)(?=\nCác trường hợp liên quan\s*:|$)/iu);
+  const relatedMatch = formatted.match(/\nCác trường hợp liên quan\s*:\s*([\s\S]*)$/iu);
+  const result = resultMatch?.[1]?.trim() || formatted;
+  const explanationParts = [explanationMatch?.[1]?.trim(), relatedMatch?.[1]?.trim()].filter(Boolean);
+  const details = explanationParts.length ? `\n${explanationParts.join('\n')}` : '';
+  const sourceBlock = sources.length
+    ? `\n\nNguồn tham khảo đã đối chiếu:\n${sources.map((source) => `- ${source.title}: ${source.url}`).join('\n')}`
+    : '';
+  return `${result}${details}${sourceBlock}`;
 };
-
-function answerGroundedFoodQuestion(question) {
-  const normalized = normalizeVietnamese(question);
-  if (!normalized.includes('rau muong') || !/(mon|nau|che bien|lam gi|goi y|an ngon)/.test(normalized)) return null;
-  return [
-    'Một số món rau muống phổ biến, dễ chế biến:',
-    '- Rau muống xào tỏi: rau được xào nhanh trên lửa lớn với tỏi phi, giữ màu xanh và độ giòn, có mùi tỏi thơm rõ và gia vị đậm vừa ăn.',
-    '- Rau muống luộc: món đơn giản, cọng rau chín mềm nhưng vẫn giòn ngọt; có thể dùng cùng nước mắm để tăng vị đậm đà.',
-    '- Canh rau muống tôm chua: nước canh có vị chua thanh từ me, vị ngọt dịu và tôm dai ngọt, phù hợp dùng trong bữa cơm ngày nóng.',
-    '- Gỏi gà rau muống: rau muống giòn kết hợp với thịt gà mềm, được trộn cùng nước sốt chua ngọt và hơi cay để tạo vị hài hòa.',
-    '- Rau muống xào thịt heo: rau xanh giòn xào cùng thịt heo, tỏi và dầu hào, tạo thành món mặn dễ ăn cùng cơm.',
-  ].join('\n');
-}
 
 const roleOfUser = (user) => store.roles.find((role) => role.role_id === user.role_id)?.role_name;
 
@@ -341,8 +565,6 @@ router.post('/chat', async (req, res) => {
       content: String(item.content).replace(/\n+(?:Nguồn tham khảo đã đối chiếu|Tham khảo thêm tại link):[\s\S]*$/i, '').trim().slice(0, 1600),
     }));
   if (!message) return res.status(400).json({ message: 'Nội dung câu hỏi là bắt buộc' });
-  const groundedFoodAnswer = answerGroundedFoodQuestion(message);
-  if (groundedFoodAnswer) return res.json({ reply: appendReference(groundedFoodAnswer, await findReferenceLink(message)), provider: 'system', source: 'verified-food-guide' });
   const directoryAnswer = answerDirectoryQuestion(message, req.user);
   // Danh bạ là dữ liệu nội bộ của GREEN ARGRIC, không gắn nguồn web không liên quan.
   if (directoryAnswer) return res.json({ reply: formatPlainAnswer(directoryAnswer), provider: 'system', source: 'users', sources: [] });
@@ -354,11 +576,15 @@ router.post('/chat', async (req, res) => {
   }
   const webSources = selectSourcesForQuestion(message, await searchWebSources(message));
   if (!webSources.length) return res.status(503).json({ message: config.ai.tavilyApiKey ? 'Chưa tìm được bài viết phù hợp để kiểm chứng câu trả lời. Bạn hãy mô tả câu hỏi cụ thể hơn.' : 'Chưa cấu hình TAVILY_API_KEY nên trợ lý không thể tìm nguồn kiểm chứng.', code: 'VERIFIED_SOURCE_UNAVAILABLE' });
+  const structuredRecipe = answerStructuredRecipe(message, webSources[0]);
+  if (structuredRecipe) return res.json({ reply: appendVerifiedSources(structuredRecipe, webSources), provider: 'system', source: 'verified-recipe', sources: webSources });
   const system = `Bạn là trợ lý GREEN ARGRIC. Trả lời trực tiếp câu hỏi cuối cùng bằng tiếng Việt rõ ràng.
 Chỉ dùng dữ kiện trong verifiedWebSources bên dưới; không đoán và không thêm số liệu. Được phép dịch hoặc diễn đạt lại trung thành với nguồn.
 Chỉ lấy ý liên quan đúng đối tượng được hỏi. Nếu nguồn có đủ dữ kiện thì phải trả lời, không nhận xét bản nháp hoặc quá trình tìm kiếm.
+Với câu hỏi "khi nào", "điều kiện" hoặc yêu cầu phân loại, phải nêu điều kiện cần và đủ, giữ đủ mọi biến số, kiểm tra trường hợp biên và nêu các trường hợp đối lập liên quan trước khi kết luận.
 Với câu hỏi hướng dẫn, sắp xếp thành các bước theo đúng thứ tự trong nguồn. Với công thức nấu ăn, chỉ dùng nguồn đầu tiên và không trộn định lượng.
 Dùng văn bản thuần, mỗi ý một dòng, không dùng Markdown và không tự tạo URL.
+Trình bày câu trả lời trực tiếp cùng các căn cứ, điều kiện và chi tiết cần thiết. Không tạo tiêu đề "Kết quả" hoặc "Giải thích". Không tự viết phần nguồn vì hệ thống sẽ gắn nguồn sau.
 verifiedWebSources: ${JSON.stringify(webSources)}`;
   const messages = [{ role: 'system', content: system }, ...history.map((item) => ({ role: item.role === 'assistant' ? 'assistant' : 'user', content: String(item.content || '') })), { role: 'user', content: message }];
   try {
@@ -366,9 +592,18 @@ verifiedWebSources: ${JSON.stringify(webSources)}`;
       const { response, result } = await requestOllama(messages, { question: message, sources: webSources });
       if (!response.ok) return res.status(502).json({ message: result.error || 'Ollama không phản hồi', code: 'OLLAMA_ERROR' });
       let reply = enforceQuestionScope(message, result.message?.content || 'AI chưa tạo được nội dung trả lời.');
+      reply = validateRecipeAgainstSource(message, reply, webSources[0]);
       if (/^Chưa có đủ nguồn phù hợp/i.test(reply) && webSources.length) {
         const fallbackReply = await requestSimpleGroundedAnswer(message, webSources);
-        if (fallbackReply) reply = enforceQuestionScope(message, fallbackReply);
+        if (fallbackReply) {
+          reply = enforceQuestionScope(message, fallbackReply);
+          reply = validateRecipeAgainstSource(message, reply, webSources[0]);
+        }
+      }
+      if (/^Chưa có đủ nguồn phù hợp/i.test(reply) && webSources[0]?.summary) reply = formatPlainAnswer(webSources[0].summary);
+      if (needsCompletenessExpansion(message, reply)) {
+        const completeReply = await requestCompleteGroundedAnswer(message, webSources);
+        if (completeReply && !/^Chưa có đủ nguồn phù hợp/i.test(completeReply)) reply = enforceQuestionScope(message, completeReply);
       }
       return res.json({ reply: appendVerifiedSources(reply, webSources), model: config.ai.ollamaModel, provider: 'ollama', sources: webSources });
     }
@@ -377,9 +612,13 @@ verifiedWebSources: ${JSON.stringify(webSources)}`;
     const result = await response.json();
     if (!response.ok) return res.status(response.status).json({ message: result.error?.message || 'Dịch vụ AI không phản hồi', code: 'OPENAI_ERROR' });
     const output = result.output_text || result.output?.flatMap((item) => item.content || []).find((item) => item.type === 'output_text')?.text;
-    return res.json({ reply: appendVerifiedSources(enforceQuestionScope(message, output || 'AI chưa tạo được nội dung trả lời.'), webSources), model: config.openai.model, provider: 'openai', sources: webSources });
+    let reply = enforceQuestionScope(message, output || 'AI chưa tạo được nội dung trả lời.');
+    reply = validateRecipeAgainstSource(message, reply, webSources[0]);
+    return res.json({ reply: appendVerifiedSources(reply, webSources), model: config.openai.model, provider: 'openai', sources: webSources });
   } catch (error) {
     const usingOllama = config.ai.provider === 'ollama';
+    const verifiedSummary = webSources.find((source) => source.summary)?.summary;
+    if (verifiedSummary) return res.json({ reply: appendVerifiedSources(verifiedSummary, webSources), provider: 'tavily', source: 'verified-web-fallback', sources: webSources });
     return res.status(503).json({ message: usingOllama ? 'Không kết nối được Ollama. Hãy chạy ollama serve và tải model đã cấu hình.' : 'Không kết nối được OpenAI.', code: usingOllama ? 'OLLAMA_UNAVAILABLE' : 'OPENAI_UNAVAILABLE', detail: error.message });
   }
 });

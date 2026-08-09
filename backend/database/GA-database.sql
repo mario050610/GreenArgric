@@ -24,7 +24,9 @@ CREATE TABLE HydroponicArea (
   area_id INT IDENTITY PRIMARY KEY,
   area_name NVARCHAR(100) NOT NULL UNIQUE,
   location NVARCHAR(255), crop_type NVARCHAR(100), description NVARCHAR(500),
-  status VARCHAR(20) NOT NULL DEFAULT 'active', created_at DATETIME2 DEFAULT SYSDATETIME(), updated_at DATETIME2
+  status VARCHAR(20) NOT NULL DEFAULT 'active',
+  ui_status VARCHAR(20), health_score INT, planted_date NVARCHAR(30), harvest_date NVARCHAR(30),
+  created_at DATETIME2 DEFAULT SYSDATETIME(), updated_at DATETIME2
 );
 
 CREATE TABLE UserArea (
