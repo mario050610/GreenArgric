@@ -15,14 +15,16 @@ export const isRecipeQuestion = (question) => {
 
 export const isInternalSystemQuestion = (question) => {
   const normalized = normalizeVietnamese(question);
+  // Trong GREEN ARGRIC, "vườn" và "khu vườn" là cách gọi ngắn của khu vực trồng.
+  const gardenAliasContext = /\bvuon\b|khu vuon/.test(normalized);
   const explicitSystemContext = /(green argric|trong he thong|tren giao dien|du lieu noi bo|cua toi|vuon toi|tai khoan toi|tai khoan cua toi)/.test(normalized);
-  const areaContext = /\bkhu\s*[a-l]\b|khu vuc trong|khu trong|vuon hom nay|tinh hinh.*vuon|tong quan.*vuon/.test(normalized);
+  const areaContext = /\bkhu\s*[a-l]\b|khu vuc trong|khu trong|vuon hom nay|tinh hinh.*vuon|tinh trang.*vuon|tong quan.*vuon/.test(normalized);
   const operationalContext = /(trang thai|chi so|dang bat|dang tat|canh bao|nguong|lich hen|bao tri|nhiem vu|lich lam)/.test(normalized)
     && /(thiet bi|cam bien|may bom|den|quat|vuon|khu|cong viec)/.test(normalized);
   const assignedServiceContext = /(ky thuat vien|ktv|ai).*(se den sua|den sua|sua chua|bao tri|se thuc hien)/.test(normalized);
   const directoryContext = /(can lien he ai|thong tin lien he|danh sach|co nhung ai|gom nhung ai|bao nhieu|ten gi|ai quan ly)/.test(normalized)
     && /(quan tri vien|admin|chu vuon|owner|ky thuat vien|technician|ktv|khu)/.test(normalized);
-  return explicitSystemContext || areaContext || operationalContext || assignedServiceContext || directoryContext;
+  return gardenAliasContext || explicitSystemContext || areaContext || operationalContext || assignedServiceContext || directoryContext;
 };
 
 export function compactRecipeSource(value) {
@@ -509,6 +511,11 @@ export function answerSystemDataQuestion(question, currentUser) {
     ? store.areas.filter((area) => normalizeVietnamese(area.area_name) === `khu ${areaMatch[1]}`)
     : store.areas;
 
+  if (/(bao nhieu|so luong|tong so).*(khu vuon|khu vuc|khu trong)|(?:khu vuon|khu vuc|khu trong).*(bao nhieu|so luong|tong so)/.test(normalized)) {
+    const areaNames = store.areas.map((area) => area.area_name).join(', ');
+    return `Hệ thống hiện có ${store.areas.length} khu vực trồng${areaNames ? `: ${areaNames}.` : '.'}`;
+  }
+
   if (/(dang trong gi|trong cay gi|loai cay gi|cay gi dang trong|dang trong cay)/.test(normalized)) {
     return selectedAreas.map((area) => `- ${area.area_name}: đang trồng ${area.crop_type}.`).join('\n');
   }
@@ -532,7 +539,7 @@ export function answerSystemDataQuestion(question, currentUser) {
     }).join('\n');
   }
 
-  if (/(khu vuc|khu trong|vuon hom nay|tinh hinh.*vuon|tong quan.*vuon)/.test(normalized)) {
+  if (/(khu vuc|khu trong|vuon hom nay|tinh hinh.*vuon|tinh trang.*vuon|tong quan.*vuon)/.test(normalized)) {
     return selectedAreas.map((area) => {
       const readings = ['temperature', 'humidity', 'ph', 'ec', 'water_level']
         .map((type) => latestReading(area.area_id, type))
@@ -549,6 +556,16 @@ export function answerSystemDataQuestion(question, currentUser) {
       return normalized.includes(aliases[type]);
     });
     const types = requestedTypes.length ? requestedTypes : Object.keys(sensorLabels);
+    const asksHighest = /(cao nhat|lon nhat|max|toi da)/.test(normalized);
+    const asksLowest = /(thap nhat|nho nhat|min|toi thieu)/.test(normalized);
+    if ((asksHighest || asksLowest) && types.length === 1) {
+      const comparable = selectedAreas.map((area) => ({ area, reading: latestReading(area.area_id, types[0]) }))
+        .filter((item) => item.reading && Number.isFinite(Number(item.reading.value)));
+      if (!comparable.length) return `Chưa có dữ liệu ${sensorLabels[types[0]].toLowerCase()} của các khu vực trồng.`;
+      const targetValue = (asksHighest ? Math.max : Math.min)(...comparable.map((item) => Number(item.reading.value)));
+      const matches = comparable.filter((item) => Number(item.reading.value) === targetValue);
+      return `${matches.map((item) => `${item.area.area_name} đang trồng ${item.area.crop_type}`).join(' và ')} có ${sensorLabels[types[0]].toLowerCase()} ${asksHighest ? 'cao nhất' : 'thấp nhất'}: ${matches[0].reading.value} ${matches[0].reading.unit}.`;
+    }
     return selectedAreas.map((area) => {
       const values = types.map((type) => latestReading(area.area_id, type)).filter(Boolean)
         .map((reading) => `${sensorLabels[store.sensors.find((sensor) => sensor.sensor_id === reading.sensor_id)?.sensor_type]} ${reading.value} ${reading.unit}`);

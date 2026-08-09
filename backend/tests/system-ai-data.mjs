@@ -4,6 +4,15 @@ import { answerSystemDataQuestion } from '../routes/ai.js';
 const owner = { id: 2, role: 'owner' };
 const technician = { id: 3, role: 'technician' };
 
+const areaCount = answerSystemDataQuestion('Có bao nhiêu khu vườn?', owner);
+assert.match(areaCount, /12 khu vực trồng/);
+for (const code of ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L']) assert.match(areaCount, new RegExp(`Khu ${code}`));
+
+const highestWaterGarden = answerSystemDataQuestion('Vườn nào đang có mực nước cao nhất?', owner);
+assert.match(highestWaterGarden, /Khu [A-L].*mực nước cao nhất:.*%/);
+assert.doesNotMatch(highestWaterGarden, /https?:\/\//);
+assert.equal(highestWaterGarden.split('\n').length, 1);
+
 const areas = answerSystemDataQuestion('Tình hình các khu vực trồng hôm nay như thế nào?', owner);
 assert.match(areas, /Khu A/);
 assert.match(areas, /Khu B/);
