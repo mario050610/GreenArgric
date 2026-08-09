@@ -4,7 +4,14 @@ import { store } from '../data/store.js';
 
 const router = Router();
 
-const normalizeVietnamese = (value) => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase();
+export const normalizeVietnamese = (value) => String(value || '')
+  .normalize('NFKD')
+  .replace(/\p{M}+/gu, '')
+  .replace(/[đð]/giu, 'd')
+  .replace(/\u00a0/g, ' ')
+  .replace(/[ \t]+/g, ' ')
+  .trim()
+  .toLowerCase();
 
 export const isRecipeQuestion = (question) => {
   const normalized = normalizeVietnamese(question);
@@ -227,7 +234,7 @@ async function requestOllama(messages, verificationContext = {}) {
     const needsEditorialPass = isRecipeQuestion(verificationContext.question || '')
       || /(suc khoe|benh|thuoc|trieu chung|tre em|em be|khi nao|dieu kien|truong hop|vai tro|hoat dong|bang cach|qua trinh|su khac nhau|dinh nghia|phat bieu)/.test(normalizedQuestion);
     const edited = needsEditorialPass ? await call([
-      { role: 'system', content: 'Bạn là bộ phản biện và kiểm chứng câu trả lời tiếng Việt. Không được dùng kiến thức ngoài nguồn. Trước khi viết đáp án, hãy âm thầm đối chiếu từng biến số, giả thiết, điều kiện, lượng từ và yêu cầu trong câu hỏi với nguồn; kiểm tra điều kiện cần, điều kiện đủ, trường hợp biên và phản ví dụ có liên quan. Với câu hỏi mô tả cơ chế hoặc quá trình có hướng, phải kiểm tra riêng điểm bắt đầu, điểm kết thúc và chiều chuyển động ở từng trạng thái; nếu bản nháp đảo chiều so với nguồn thì bắt buộc sửa. Nếu bản nháp thiếu một điều kiện làm thay đổi kết luận, phải bổ sung từ nguồn. Nếu bản nháp khẳng định quá mức, phải thu hẹp đúng theo nguồn. Chỉ xuất câu trả lời cuối cùng; không xuất checklist, nhận xét, lời khen, điểm số hay quá trình suy luận.' },
+      { role: 'system', content: 'Bạn là bộ phản biện và kiểm chứng câu trả lời tiếng Việt. Không được dùng kiến thức ngoài nguồn. Trước khi viết đáp án, hãy âm thầm đối chiếu từng biến số, giả thiết, điều kiện, lượng từ và yêu cầu trong câu hỏi với nguồn; kiểm tra điều kiện cần, điều kiện đủ, trường hợp biên và phản ví dụ có liên quan. Với câu hỏi mô tả cơ chế hoặc quá trình có hướng, phải kiểm tra riêng điểm bắt đầu, điểm kết thúc và chiều chuyển động ở từng trạng thái; nếu bản nháp đảo chiều so với nguồn thì bắt buộc sửa. Nếu bản nháp thiếu một điều kiện làm thay đổi kết luận, phải bổ sung từ nguồn. Nếu bản nháp khẳng định quá mức, phải thu hẹp đúng theo nguồn. Phải sửa các từ tiếng Việt bị mất dấu trong dữ liệu trích xuất và dùng đúng o/ô/ơ, a/ă/â, e/ê, u/ư theo ngữ cảnh; không sao chép nguyên dạng từ lỗi. Chỉ xuất câu trả lời cuối cùng; không xuất checklist, nhận xét, lời khen, điểm số hay quá trình suy luận.' },
       { role: 'user', content: `CÂU HỎI HIỆN TẠI:\n${verificationContext.question || ''}\n\nNGUỒN ĐƯỢC PHÉP DÙNG (nguồn đầu tiên là nguồn chính):\n${JSON.stringify(verificationContext.sources || [])}\n\nHãy sửa bản nháp bên dưới thành CÂU TRẢ LỜI CUỐI CÙNG. Phải trả lời đủ mọi vế của câu hỏi. Với câu hỏi hỏi khi nào, điều kiện hoặc phân loại: nêu điều kiện cần và đủ nếu nguồn cho phép; giữ đủ mọi biến số và giả thiết; xét trường hợp biên và các trường hợp đối lập trực tiếp để kết luận không mơ hồ. Không được biến điều kiện cần thành điều kiện đủ hoặc ngược lại. Nếu câu hỏi giới hạn một loại đối tượng, phải xóa mọi mục thuộc loại khác. Được phép diễn đạt lại trung thành với nguồn. Với công thức nấu ăn: chỉ dùng định lượng và quy trình của nguồn chính, không ghép nhiều bài; giữ nguyên con số và đơn vị; trình bày lần lượt Nguyên liệu, Sơ chế, Các bước thực hiện. Chỉ trả lời "Chưa có đủ nguồn phù hợp để trả lời chính xác câu hỏi này." khi nguồn thực sự thiếu dữ kiện. Chỉ dùng tiếng Việt tự nhiên, không dùng ký tự lỗi hoặc Markdown, không thêm thông tin ngoài nguồn. Chỉ xuất nội dung trả lời trực tiếp.\n\nBẢN NHÁP:\n${draft}` },
     ]) : { response: { ok: false }, result: {} };
     const editedText = String(edited.result?.message?.content || '').trim();
@@ -264,7 +271,7 @@ async function requestSimpleGroundedAnswer(question, sources) {
       keep_alive: '5m',
       options: { temperature: 0.1, top_p: 0.85, num_ctx: 4096 },
       messages: [
-        { role: 'system', content: 'Trả lời trực tiếp bằng tiếng Việt, chỉ dùng dữ kiện trong nguồn. Không nhận xét nguồn, không đoán và không dùng Markdown.' },
+        { role: 'system', content: 'Trả lời trực tiếp bằng tiếng Việt, chỉ dùng dữ kiện trong nguồn. Phải sửa từ bị mất dấu trong dữ liệu trích xuất và viết đúng chính tả tiếng Việt theo ngữ cảnh. Không nhận xét nguồn, không đoán và không dùng Markdown.' },
         { role: 'user', content: `Câu hỏi: ${question}\n\nNguồn đã kiểm chứng:\n${sources.map((source) => `${source.title}\n${source.description}`).join('\n\n')}\n\nHãy trả lời đúng trọng tâm và đầy đủ. Nếu câu hỏi hỏi "khi nào", "điều kiện" hoặc phân loại trường hợp, phải nêu điều kiện cần và đủ, không bỏ sót biến số hay trường hợp biên; nêu ngắn gọn các trường hợp đối lập liên quan để kiểm tra kết luận. Nếu là công thức, chỉ dùng nguồn đầu tiên; trình bày đủ Nguyên liệu, Sơ chế và Các bước thực hiện theo đúng thứ tự của bài; không tự thêm định lượng hoặc thao tác.` },
       ],
     }),
@@ -302,7 +309,7 @@ async function requestCompleteGroundedAnswer(question, sources) {
   return response.ok ? formatPlainAnswer(result.message?.content || '') : '';
 }
 
-const formatPlainAnswer = (answer) => String(answer || '')
+const formatPlainAnswer = (answer) => String(answer || '').normalize('NFC')
   .replace(/\*\*(.*?)\*\*/g, '$1')
   .replace(/\$([^$\n]+)\$/g, '$1')
   .replace(/`([^`]+)`/g, '$1')
@@ -765,7 +772,7 @@ Chỉ dùng dữ kiện trong verifiedWebSources bên dưới; không đoán và
 Chỉ lấy ý liên quan đúng đối tượng được hỏi. Nếu nguồn có đủ dữ kiện thì phải trả lời, không nhận xét bản nháp hoặc quá trình tìm kiếm.
 Với câu hỏi "khi nào", "điều kiện" hoặc yêu cầu phân loại, phải nêu điều kiện cần và đủ, giữ đủ mọi biến số, kiểm tra trường hợp biên và nêu các trường hợp đối lập liên quan trước khi kết luận.
 Với câu hỏi hướng dẫn, sắp xếp thành các bước theo đúng thứ tự trong nguồn. Với công thức nấu ăn, chỉ dùng nguồn đầu tiên và không trộn định lượng.
-Dùng văn bản thuần, mỗi ý một dòng, không dùng Markdown và không tự tạo URL.
+Dùng văn bản thuần, mỗi ý một dòng, không dùng Markdown và không tự tạo URL. Sửa các từ bị mất dấu trong dữ liệu trích xuất và luôn viết đúng chính tả tiếng Việt theo ngữ cảnh.
 Trình bày câu trả lời trực tiếp cùng các căn cứ, điều kiện và chi tiết cần thiết. Không tạo tiêu đề "Kết quả" hoặc "Giải thích". Không tự viết phần nguồn vì hệ thống sẽ gắn nguồn sau.
 verifiedWebSources: ${JSON.stringify(webSources)}`;
   const messages = [{ role: 'system', content: system }, ...history.map((item) => ({ role: item.role === 'assistant' ? 'assistant' : 'user', content: String(item.content || '') })), { role: 'user', content: message }];

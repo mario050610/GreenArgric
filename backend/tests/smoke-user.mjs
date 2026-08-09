@@ -103,6 +103,7 @@ const { isRecipeQuestion } = await import('../routes/ai.js');
 const { isInternalSystemQuestion } = await import('../routes/ai.js');
 const { isPredominantlyEnglish } = await import('../routes/ai.js');
 const { isFarmingQuestion, removeUnsupportedDirectionalDetails } = await import('../routes/ai.js');
+const { normalizeVietnamese } = await import('../routes/ai.js');
 if (isRecipeQuestion('Công thức hóa học của natri clorua là gì?')) throw new Error('Chemical formula was incorrectly classified as a recipe');
 if (isRecipeQuestion('Công thức tính diện tích hình tròn')) throw new Error('Math formula was incorrectly classified as a recipe');
 if (!isRecipeQuestion('Công thức nấu gà hấp cải bẹ xanh')) throw new Error('Cooking recipe was not recognized');
@@ -112,6 +113,16 @@ if (!isInternalSystemQuestion('Vườn nào đang có mực nước cao nhất?'
 if (!isInternalSystemQuestion('Khu nào đang có vấn đề nhất?')) throw new Error('Bare area alias was not classified as internal area data');
 if (isFarmingQuestion('Cách lập kế hoạch học tập trong một tuần?')) throw new Error('Preposition "trong" was incorrectly classified as farming');
 if (!isFarmingQuestion('Cách trồng rau trong vườn?')) throw new Error('Actual farming question was not recognized');
+for (const [variants, expected] of [
+  [['o', 'ô', 'ơ', 'ó', 'ờ', 'ợ'], 'o'],
+  [['a', 'ă', 'â', 'á', 'ằ', 'ậ'], 'a'],
+  [['e', 'ê', 'é', 'ề', 'ệ'], 'e'],
+  [['u', 'ư', 'ú', 'ừ', 'ự'], 'u'],
+]) {
+  for (const value of variants) if (normalizeVietnamese(value) !== expected) throw new Error(`Vietnamese vowel normalization failed for ${value}`);
+}
+if (normalizeVietnamese('ĐIỀU KHIỂN\u00a0THIẾT BỊ') !== 'dieu khien thiet bi') throw new Error('Vietnamese uppercase/NBSP normalization failed');
+if (normalizeVietnamese('Nguyễn Thúy Ái') !== normalizeVietnamese('Nguyễn Thúy Ái')) throw new Error('NFD and NFC Vietnamese text did not normalize equally');
 const directionalEvidence = [{ description: 'Khi sạc, ion di chuyển từ cực dương sang cực âm. Khi xả, ion di chuyển từ cực âm sang cực dương.', summary: '' }];
 const groundedDirection = removeUnsupportedDirectionalDetails('Pin hoạt động thuận nghịch. Khi sạc, ion di chuyển từ cực âm sang cực dương. Khi xả, ion di chuyển từ cực âm sang cực dương.', directionalEvidence);
 if (/Khi sạc/i.test(groundedDirection)) throw new Error('Unsupported directional claim was not removed');
