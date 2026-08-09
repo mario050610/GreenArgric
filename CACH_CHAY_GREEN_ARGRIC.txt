@@ -1,0 +1,69 @@
+GREEN ARGRIC - CÁCH MỞ WEB MỖI LẦN SỬ DỤNG
+============================================================
+
+CÁCH NHANH NHẤT - KHÔNG CẦN MỞ TỪNG TERMINAL
+
+1. Mở thư mục D:\DADN trên Windows.
+2. Nhấp đúp file MO_GREEN_ARGRIC.cmd.
+3. Chờ thông báo GREEN ARGRIC đã sẵn sàng.
+4. Trình duyệt tự mở địa chỉ http://localhost:5173.
+
+Launcher tự động mở các tiến trình WSL ở dạng thu nhỏ:
+- Ollama tại cổng 11434, nếu máy đã cài Ollama.
+- Backend tại cổng 3000.
+- Frontend tại cổng 5173.
+
+Bạn không cần tự gõ ollama serve, node index.js hoặc pnpm dev. Không đóng các cửa sổ WSL có tên GREEN ARGRIC nếu muốn web tiếp tục hoạt động; chúng đã được thu nhỏ trên thanh tác vụ.
+
+TẮT HỆ THỐNG
+
+Nhấp đúp file TAT_GREEN_ARGRIC.cmd.
+File này chỉ dừng những tiến trình đã được launcher khởi động.
+
+KIỂM TRA TRẠNG THÁI
+
+Mở WSL và chạy:
+
+  bash /mnt/d/DADN/scripts/status-web-wsl.sh
+
+Kết quả bình thường:
+
+  [ONLINE]  Ollama
+  [ONLINE]  Backend
+  [ONLINE]  Frontend
+
+TÀI KHOẢN ĐĂNG NHẬP
+
+Quản trị viên: admin@greenargric.edu.vn
+Chủ vườn:      owner@greenargric.edu.vn
+Kỹ thuật viên: tech@greenargric.edu.vn
+Mật khẩu:      greenargric2026
+
+LƯU Ý
+
+- Dự án runtime mặc định phải nằm tại ~/green-argric-run trong WSL.
+- Các file .env của Backend phải được cấu hình trước.
+- Muốn dùng AI cần có model gemma3:4b và TAVILY_API_KEY hợp lệ.
+- Nếu chỉ muốn xem giao diện, Ollama có thể offline; đăng nhập và dữ liệu vẫn cần Backend.
+- Không thể dùng đầy đủ đăng nhập, tin nhắn, dữ liệu và AI nếu thật sự không có Backend. Launcher giải quyết bằng cách tự chạy Backend/Frontend ở chế độ nền.
+
+XEM LOG KHI CÓ LỖI
+
+  tail -n 100 ~/green-argric-run/.green-argric-runtime/backend.log
+  tail -n 100 ~/green-argric-run/.green-argric-runtime/frontend.log
+  tail -n 100 ~/green-argric-run/.green-argric-runtime/ollama.log
+
+CÁCH CHẠY THỦ CÔNG DỰ PHÒNG
+
+Terminal 1:
+  ollama serve
+
+Terminal 2:
+  cd ~/green-argric-run/backend
+  node index.js
+
+Terminal 3:
+  cd ~/green-argric-run/frontend
+  node node_modules/vite/bin/vite.js --host 0.0.0.0
+
+Sau đó mở http://localhost:5173.
