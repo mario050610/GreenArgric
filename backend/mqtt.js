@@ -3,7 +3,7 @@ import mqtt from 'mqtt';
 import { config } from './config.js';
 import { store, nextId } from './data/store.js';
 import { evaluateReading } from './core/automation.js';
-import { persistReading, updatePersistedDevice } from './db.js';
+import { persistReading, updatePersistedCommand, updatePersistedDevice } from './db.js';
 
 let client;
 const state = {
@@ -34,6 +34,10 @@ function localSensorTopic() {
 
 function localDeviceStatusTopic() {
   return `${config.mqtt.local.baseTopic}/area/+/device/+/status`;
+}
+
+function localGatewayStatusTopic() {
+  return `${config.mqtt.local.baseTopic}/gateway/status`;
 }
 
 function parsePayload(buffer) {
@@ -150,9 +154,18 @@ async function handleLocalMessage(topic, buffer) {
   const { parsed } = parsePayload(buffer);
   const parts = topic.split('/');
 
+  if (topic === localGatewayStatusTopic()) {
+    state.gateway = parsed;
+    return;
+  }
+
   if (parts.at(-1) === 'data') {
+    const areaId = Number(parts[2]);
     const sensorCode = parts[4];
-    const sensor = store.sensors.find((item) => item.sensor_code === sensorCode);
+    const sensor = store.sensors.find((item) =>
+      item.sensor_code === sensorCode
+      || (item.area_id === areaId && item.sensor_type === sensorCode),
+    );
     if (sensor) await saveSensorReading(sensor, parsed);
     return;
   }
@@ -163,7 +176,22 @@ async function handleLocalMessage(topic, buffer) {
     const status = normalizeSwitchState(parsed);
     if (device && status) {
       device.status = status;
-      device.last_seen = new Date().toISOString();
+      device.last_seen = parsed && typeof parsed === 'object' && parsed.timestamp
+        ? parsed.timestamp
+        : new Date().toISOString();
+      await updatePersistedDevice(device);
+      const requestId = parsed && typeof parsed === 'object' ? parsed.request_id : null;
+      const command = requestId
+        ? store.commands.find((item) => item.request_id === requestId)
+        : store.commands.find((item) =>
+          item.device_id === device.device_id
+          && ['pending', 'sent'].includes(item.result_status),
+        );
+      if (command) {
+        command.result_status = parsed?.ok === false ? 'failed' : 'acknowledged';
+        command.acknowledged_at = device.last_seen;
+        await updatePersistedCommand(command);
+      }
     }
   }
 }
@@ -215,7 +243,7 @@ function subscriptionTopics() {
       `${config.mqtt.adafruit.username}/errors`,
     ];
   }
-  return [localSensorTopic(), localDeviceStatusTopic()];
+  return [localSensorTopic(), localDeviceStatusTopic(), localGatewayStatusTopic()];
 }
 
 export function startMqtt() {

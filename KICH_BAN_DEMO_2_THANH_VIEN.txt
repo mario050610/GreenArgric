@@ -1,0 +1,329 @@
+KỊCH BẢN DEMO GREEN ARGRIC CHO 2 THÀNH VIÊN
+============================================================
+
+Thời lượng đề xuất: 12-15 phút.
+
+Phân công:
+
+- Bạn 1: thao tác mô hình, cảm biến, Micro:bit và relay.
+- Bạn 2: thao tác laptop, Adafruit IO, Gateway, Backend và Website.
+
+Mục tiêu:
+
+Demo một luồng xuyên suốt từ cảm biến đến Website và điều khiển
+thiết bị theo chiều ngược lại.
+
+Luồng dữ liệu:
+
+Cảm biến DHT20/AHT20
+-> Micro:bit/YOLO:BIT
+-> USB Serial
+-> Python Gateway
+-> Adafruit IO/MQTT
+-> Backend và Database
+-> Website.
+
+Luồng điều khiển:
+
+Website
+-> Backend
+-> MQTT
+-> Python Gateway
+-> Micro:bit/YOLO:BIT
+-> Relay
+-> LED hoặc quạt mini.
+
+============================================================
+I. BỘ THIẾT BỊ ĐỀ XUẤT MƯỢN
+============================================================
+
+- 01 Micro:bit hoặc YOLO:BIT.
+- 01 mạch mở rộng tương thích.
+- 01 cảm biến DHT20 hoặc AHT20.
+- 01 module relay.
+- 01 LED hoặc quạt mini.
+- Dây nối và cáp USB có truyền dữ liệu.
+
+Đây là bộ tối thiểu để minh họa tích hợp phần cứng. Không cần mượn
+đầy đủ cảm biến pH, EC, CO2, mực nước hoặc oxy hòa tan. Những dữ liệu
+này được mô phỏng trên phần mềm.
+
+Việc sử dụng thiết bị thật giúp bài demo trực quan hơn, nhưng không
+phải điều kiện bắt buộc để hệ thống phần mềm hoạt động.
+
+============================================================
+II. CHUẨN BỊ TRƯỚC KHI DEMO
+============================================================
+
+Bạn 1 chuẩn bị:
+
+- Lắp Micro:bit vào mạch mở rộng.
+- Kết nối DHT20/AHT20.
+- Kết nối relay với LED hoặc quạt mini.
+- Kiểm tra nguồn điện phù hợp.
+- Kết nối Micro:bit với laptop bằng cáp USB.
+- Chuẩn bị sơ đồ nối dây và video dự phòng.
+
+Bạn 2 chuẩn bị:
+
+- Đăng nhập sẵn Website GREEN ARGRIC.
+- Mở Adafruit IO Dashboard.
+- Mở terminal Python Gateway.
+- Mở terminal Backend.
+- Mở terminal Frontend.
+- Chuẩn bị ba tài khoản: quản trị viên, chủ vườn và kỹ thuật viên.
+- Kiểm tra chức năng xuất báo cáo hoặc CSV.
+
+Kiểm tra hệ thống trong WSL:
+
+  /mnt/d/DADN/scripts/status-web-wsl.sh
+
+Kết quả cần có:
+
+  [ONLINE] Ollama
+  [ONLINE] Backend
+  [ONLINE] Frontend
+
+Nếu dùng MQTT local, kiểm tra thêm Mosquitto và Python Gateway.
+
+============================================================
+III. KỊCH BẢN DEMO CHI TIẾT
+============================================================
+
+PHẦN 1 - GIỚI THIỆU HỆ THỐNG
+Thời gian: 1 phút.
+
+Bạn 2 trình bày:
+
+  GREEN ARGRIC là hệ thống giám sát và điều khiển vườn. Dữ liệu từ
+  cảm biến được Micro:bit gửi qua Python Gateway, MQTT và Backend để
+  lưu trữ và hiển thị trên Website. Người dùng có thể gửi lệnh từ
+  Website về relay để điều khiển thiết bị.
+
+Bạn 1 chỉ trực tiếp các thành phần trên mô hình:
+
+- Micro:bit/YOLO:BIT.
+- DHT20/AHT20.
+- Relay.
+- LED hoặc quạt mini.
+
+------------------------------------------------------------
+PHẦN 2 - ĐỌC VÀ HIỂN THỊ DỮ LIỆU CẢM BIẾN
+Thời gian: 3 phút.
+
+Bước 1 - Bạn 2 kiểm tra và chạy Python Gateway trong WSL:
+
+  cd /mnt/d/DADN/iot-gateway
+  bash ../scripts/check-device-wsl.sh
+  python3 main.py
+
+Trong iot-gateway/.env, cấu hình MQTT local như sau:
+
+  MQTT_PROVIDER=local
+  MQTT_BROKER=mqtt://127.0.0.1:1883
+  MQTT_BASE_TOPIC=greenargric
+  SERIAL_PORT=/dev/ttyACM0
+  AREA_ID=1
+
+Nếu Gateway tự nhận cổng Micro:bit thì có thể để trống SERIAL_PORT.
+
+Terminal cần thể hiện:
+
+- Đã nhận diện cổng Micro:bit.
+- Đã kết nối Serial.
+- Đã kết nối MQTT hoặc Adafruit IO.
+- Đã nhận dữ liệu cảm biến.
+
+Bước 2 - Bạn 1 tác động vào cảm biến:
+
+- Đặt tay gần DHT20/AHT20 để nhiệt độ hoặc độ ẩm thay đổi.
+- Không chạm mạnh hoặc làm ướt cảm biến.
+
+Bước 3 - Bạn 2 chứng minh dữ liệu đi qua hệ thống:
+
+- Chỉ giá trị mới trong terminal Gateway.
+- Chỉ biểu đồ hoặc feed trên Adafruit IO.
+- Mở Chỉ số môi trường trên Website.
+- Mở Lịch sử dữ liệu và chỉ bản ghi mới cùng thời gian nhận.
+
+Nội dung cần nói:
+
+  Đây là dữ liệu thật từ DHT20/AHT20. Các chỉ số chuyên dụng chưa có
+  cảm biến như pH và EC đang sử dụng dữ liệu mô phỏng nhưng vẫn đi
+  qua cùng cấu trúc xử lý của Backend.
+
+------------------------------------------------------------
+PHẦN 3 - CẢNH BÁO VƯỢT NGƯỠNG
+Thời gian: 2 phút.
+
+Bước 1 - Bạn 2 mở trang Cấu hình ngưỡng.
+
+Bước 2 - Đặt ngưỡng nhiệt độ trên thấp hơn giá trị hiện tại.
+
+Ví dụ:
+
+  Nhiệt độ hiện tại: 28 độ C.
+  Ngưỡng trên: 25 độ C.
+
+Bước 3 - Bạn 1 tiếp tục tác động để cảm biến gửi giá trị mới.
+
+Bước 4 - Bạn 2 chứng minh:
+
+- Chuông thông báo tăng số lượng.
+- Trang Cảnh báo xuất hiện bản ghi mới.
+- Cảnh báo có đúng khu vực, loại cảm biến, giá trị và thời gian.
+- Có thể nhấn xử lý cảnh báo nếu giao diện hỗ trợ.
+
+------------------------------------------------------------
+PHẦN 4 - ĐIỀU KHIỂN THIẾT BỊ HAI CHIỀU
+Thời gian: 2 phút.
+
+Bước 1 - Bạn 2 mở trang Điều khiển thiết bị.
+
+Bước 2 - Bạn 2 nhấn bật LED hoặc quạt.
+
+Bước 3 - Bạn 1 chứng minh:
+
+- Relay đổi trạng thái.
+- LED sáng hoặc quạt bắt đầu chạy.
+
+Bước 4 - Bạn 2 chỉ trên laptop:
+
+- Backend phát lệnh MQTT.
+- Gateway nhận lệnh và chuyển xuống Micro:bit.
+- Trạng thái phản hồi được cập nhật trên Website.
+
+Bước 5 - Bạn 2 nhấn tắt và Bạn 1 chứng minh thiết bị tắt.
+
+Nếu chỉ có một relay, trình bày:
+
+  Nhóm sử dụng một relay và một tải thật để chứng minh cơ chế. Bơm,
+  đèn và quạt trong hệ thống đều sử dụng cùng luồng điều khiển.
+
+------------------------------------------------------------
+PHẦN 5 - DEMO CÁC CHỨC NĂNG WEBSITE
+Thời gian: 3-4 phút.
+
+Bạn 2 thực hiện nhanh các chức năng chính:
+
+Quản trị viên:
+
+- Đăng nhập tài khoản quản trị viên.
+- Xem tổng quan và trạng thái hệ thống.
+- Tạo một tài khoản chủ vườn hoặc kỹ thuật viên.
+- Kiểm tra hoạt động tạo tài khoản xuất hiện trong Hoạt động gần đây.
+- Thêm thiết bị.
+- Xuất báo cáo hoặc CSV.
+
+Chủ vườn:
+
+- Xem các khu vực trồng.
+- Thêm khu vực mới.
+- Cấu hình ngưỡng.
+- Xem dữ liệu và điều khiển thiết bị.
+- Nhắn tin cho quản trị viên hoặc kỹ thuật viên.
+- Hỏi Trợ lý AI về dữ liệu nội bộ.
+
+Câu hỏi gợi ý:
+
+  Khu E đang trồng gì?
+  Tình hình các khu vực trồng hôm nay thế nào?
+  Kỹ thuật viên nào sẽ đến sửa?
+
+Kỹ thuật viên:
+
+- Xem công việc được giao.
+- Nhấn xử lý công việc.
+- Ghi nhật ký sửa chữa hoặc hiệu chỉnh cảm biến.
+- Nhắn kết quả cho chủ vườn hoặc quản trị viên.
+
+------------------------------------------------------------
+PHẦN 6 - KẾT THÚC
+Thời gian: 1 phút.
+
+Bạn 2 trình bày:
+
+  GREEN ARGRIC đã hoàn thiện luồng từ cảm biến và thiết bị thật qua
+  Micro:bit, Gateway, MQTT, Backend và Database đến giao diện Web.
+  Hệ thống hỗ trợ giám sát, cảnh báo, điều khiển hai chiều, phân
+  quyền, công việc bảo trì, nhắn tin và xuất báo cáo. Các cảm biến
+  chuyên dụng chưa có thiết bị thật được mô phỏng và có thể thay thế
+  trực tiếp bằng cảm biến thật trong giai đoạn triển khai tiếp theo.
+
+Bạn 1 giữ mô hình ở trạng thái hoạt động để giảng viên quan sát.
+
+============================================================
+IV. PHƯƠNG ÁN DỰ PHÒNG
+============================================================
+
+Nếu cảm biến không hoạt động:
+
+- Dùng dữ liệu mô phỏng để tiếp tục demo MQTT, Backend và Website.
+- Mở video đã quay trước để chứng minh cảm biến từng hoạt động.
+- Nói rõ tình trạng, không khẳng định dữ liệu mô phỏng là dữ liệu thật.
+
+Nếu relay hoặc tải không hoạt động:
+
+- Chỉ log lệnh trên Backend, Gateway và Micro:bit.
+- Mở video dự phòng cảnh relay bật/tắt.
+
+Nếu Adafruit IO mất mạng:
+
+- Chuyển sang MQTT local bằng Mosquitto.
+- Nói rõ đây là chế độ dự phòng.
+
+Nếu Ollama chưa chạy:
+
+- Bỏ qua phần Trợ lý AI và tiếp tục demo các chức năng còn lại.
+- Không để lỗi AI làm gián đoạn luồng cảm biến và điều khiển thiết bị.
+
+============================================================
+V. LƯU Ý AN TOÀN
+============================================================
+
+- Không cấp nguồn cho quạt trực tiếp từ GPIO nếu dòng điện quá mức.
+- Sử dụng nguồn phù hợp với thông số của quạt hoặc LED.
+- Thử relay không tải trước khi nối thiết bị.
+- Không sử dụng tải điện 220 V.
+- Đặt bo mạch và nguồn điện cách xa nước.
+- Không thay đổi dây nối khi hệ thống đang cấp nguồn.
+
+============================================================
+VI. CHECKLIST TRƯỚC NGÀY BẢO VỆ
+============================================================
+
+[ ] Micro:bit/YOLO:BIT nhận đúng cổng USB.
+[ ] DHT20/AHT20 trả dữ liệu.
+[ ] Relay đúng chế độ active-high hoặc active-low.
+[ ] LED hoặc quạt mini bật/tắt được.
+[ ] Gateway kết nối Serial và MQTT.
+[ ] Adafruit IO đăng nhập được và feed cập nhật.
+[ ] Backend online.
+[ ] Frontend online.
+[ ] Ba vai trò đăng nhập được.
+[ ] Cảnh báo vượt ngưỡng hoạt động.
+[ ] Lệnh điều khiển thiết bị hoạt động.
+[ ] Tin nhắn giữa các vai trò hoạt động.
+[ ] Tạo tài khoản và lưu tài khoản hoạt động.
+[ ] Xuất CSV hoặc báo cáo thành công.
+[ ] Có sơ đồ nối dây.
+[ ] Có ảnh mô hình và video dự phòng.
+[ ] Không hiển thị hoặc đẩy file .env, AIO key hay API key lên GitHub.
+
+============================================================
+VII. PHỐI HỢP GIỮA HAI BẠN
+============================================================
+
+- Bạn 2 nói trước thao tác sắp thực hiện trên laptop.
+- Bạn 1 chỉ thao tác thiết bị sau khi Bạn 2 đã nói xong.
+- Khi cảm biến thay đổi, Bạn 1 báo “đã có dữ liệu mới”.
+- Khi Website nhận dữ liệu, Bạn 2 xác nhận giá trị và thời gian.
+- Khi bật thiết bị, Bạn 2 đọc tên lệnh; Bạn 1 xác nhận relay và tải.
+- Không thao tác đồng thời quá nhanh để giảng viên theo dõi được.
+- Nếu phát sinh lỗi, chuyển ngay sang phương án dự phòng đã chuẩn bị.
+
+cd /mnt/d/DADN/iot-gateway
+cp .env.example .env
+python3 -m pip install -r requirements.txt
+bash ../scripts/check-device-wsl.sh
+python3 main.py

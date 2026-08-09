@@ -10,6 +10,7 @@ from typing import Any
 
 from adafruit_client import AdafruitBridge
 from config import GatewayConfig
+from local_mqtt_client import LocalMqttBridge
 from serial_gateway import MicrobitSerial
 
 RUNNING = True
@@ -39,7 +40,7 @@ def simulated_packet() -> dict[str, Any]:
     }
 
 
-def publish_sensor_packet(adafruit: AdafruitBridge, packet: dict[str, Any]) -> None:
+def publish_sensor_packet(adafruit: Any, packet: dict[str, Any]) -> None:
     values = packet.get('values')
     if not isinstance(values, dict):
         sensor_type = packet.get('sensor') or packet.get('sensor_type')
@@ -47,24 +48,33 @@ def publish_sensor_packet(adafruit: AdafruitBridge, packet: dict[str, Any]) -> N
             return
         values = {str(sensor_type): packet.get('value')}
     for sensor_type, value in values.items():
-        adafruit.publish_sensor(str(sensor_type), value)
+        if isinstance(adafruit, LocalMqttBridge):
+            adafruit.publish_sensor(
+                str(sensor_type), value,
+                int(packet.get('area_id') or adafruit.config.area_id),
+            )
+        else:
+            adafruit.publish_sensor(str(sensor_type), value)
     print('[gateway] Published sensor values:', values)
 
 
-def process_command(adafruit: AdafruitBridge, serial_link: MicrobitSerial | None) -> None:
+def process_command(adafruit: Any, serial_link: MicrobitSerial | None) -> None:
     command = adafruit.next_command()
     while command:
         if serial_link:
             serial_link.write_json(command)
             print('[gateway] Command sent to Micro:bit:', command)
         elif adafruit.connected:
-            adafruit.publish_device_status(str(command.get('device')), command.get('state'))
+            if isinstance(adafruit, LocalMqttBridge):
+                adafruit.publish_device_status(str(command.get('device')), command.get('state'), command)
+            else:
+                adafruit.publish_device_status(str(command.get('device')), command.get('state'))
             print('[gateway] Simulated device status:', command)
         command = adafruit.next_command()
 
 
 def process_serial_packet(
-    adafruit: AdafruitBridge,
+    adafruit: Any,
     serial_link: MicrobitSerial,
 ) -> dict[str, Any] | None:
     packet = serial_link.read_json()
@@ -74,7 +84,10 @@ def process_serial_packet(
     if packet_type == 'sensor':
         return packet
     if packet_type == 'status' and adafruit.connected:
-        adafruit.publish_device_status(str(packet.get('device')), packet.get('state'))
+        if isinstance(adafruit, LocalMqttBridge):
+            adafruit.publish_device_status(str(packet.get('device')), packet.get('state'), packet)
+        else:
+            adafruit.publish_device_status(str(packet.get('device')), packet.get('state'))
         print('[gateway] Device status published:', packet)
     elif packet_type == 'heartbeat' and adafruit.connected:
         packet.setdefault('timestamp', iso_now())
@@ -84,7 +97,7 @@ def process_serial_packet(
 
 def run(simulate: bool) -> int:
     config = GatewayConfig.from_env()
-    adafruit = AdafruitBridge(config)
+    adafruit = LocalMqttBridge(config) if config.mqtt_provider == 'local' else AdafruitBridge(config)
     serial_link = None if simulate else MicrobitSerial(
         port=config.serial_port,
         baud=config.serial_baud,
@@ -97,6 +110,7 @@ def run(simulate: bool) -> int:
     try:
         adafruit.publish_json(config.gateway_status_feed, {
             'status': 'online',
+            'provider': config.mqtt_provider,
             'mode': 'simulate' if simulate else 'microbit',
             'serial': serial_link.port if serial_link else None,
             'timestamp': iso_now(),

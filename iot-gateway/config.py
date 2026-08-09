@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -16,6 +17,11 @@ def _float(name: str, default: float) -> float:
 
 @dataclass(frozen=True)
 class GatewayConfig:
+    mqtt_provider: str
+    mqtt_broker: str
+    mqtt_username: str | None
+    mqtt_password: str | None
+    mqtt_base_topic: str
     aio_username: str
     aio_key: str
     serial_port: str | None
@@ -30,12 +36,21 @@ class GatewayConfig:
 
     @classmethod
     def from_env(cls) -> 'GatewayConfig':
+        provider = os.getenv('MQTT_PROVIDER', 'local').strip().lower()
+        if provider not in {'local', 'adafruit'}:
+            raise ValueError('MQTT_PROVIDER phải là local hoặc adafruit')
+
         username = os.getenv('AIO_USERNAME', '').strip()
         key = os.getenv('AIO_KEY', '').strip()
-        if not username or not key:
+        if provider == 'adafruit' and (not username or not key):
             raise ValueError('Thiếu AIO_USERNAME hoặc AIO_KEY trong iot-gateway/.env')
 
         return cls(
+            mqtt_provider=provider,
+            mqtt_broker=os.getenv('MQTT_BROKER', 'mqtt://127.0.0.1:1883').strip(),
+            mqtt_username=os.getenv('MQTT_USERNAME', '').strip() or None,
+            mqtt_password=os.getenv('MQTT_PASSWORD', '').strip() or None,
+            mqtt_base_topic=os.getenv('MQTT_BASE_TOPIC', 'greenargric').strip().strip('/'),
             aio_username=username,
             aio_key=key,
             serial_port=os.getenv('SERIAL_PORT', '').strip() or None,

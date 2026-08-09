@@ -1,5 +1,35 @@
 # Python IoT Gateway
 
+Gateway hỗ trợ hai chế độ MQTT:
+
+- `MQTT_PROVIDER=local`: dùng Mosquitto, không cần tài khoản Adafruit.
+- `MQTT_PROVIDER=adafruit`: dùng Feed và Dashboard Adafruit IO.
+
+Khi có thiết bị thật, đặt `SERIAL_PORT=/dev/ttyACM0` trong WSL hoặc
+để trống để Gateway tự dò. Khi chưa có thiết bị, thêm `--simulate`.
+
+## Chạy nhanh với thiết bị thật trong WSL
+
+```bash
+cd /mnt/d/DADN/iot-gateway
+cp .env.example .env
+python3 -m pip install -r requirements.txt
+bash ../scripts/check-device-wsl.sh
+python3 main.py
+```
+
+Để Backend cùng dùng MQTT local, `backend/.env` cần có:
+
+```env
+MQTT_ENABLED=true
+MQTT_PROVIDER=local
+MQTT_BROKER=mqtt://127.0.0.1:1883
+MQTT_BASE_TOPIC=greenargric
+```
+
+Để chuyển sang Adafruit IO, đổi `MQTT_PROVIDER=adafruit` trong cả hai
+file `.env`, sau đó điền `AIO_USERNAME` và `AIO_KEY`.
+
 Gateway là thành phần bắt buộc:
 
 ```text
