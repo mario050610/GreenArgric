@@ -95,7 +95,8 @@ function answerGroundedFoodQuestion(question) {
 
 function answerDirectoryQuestion(question) {
   const normalized = normalizeVietnamese(question);
-  const asksIdentity = /(ten gi|la ai|thong tin|danh sach|co nhung ai|bao nhieu)/.test(normalized);
+  const asksIdentity = /(ten gi|la ai|thong tin|danh sach|co nhung ai|bao nhieu)/.test(normalized)
+    || /^(con\s+)?(quan tri vien|admin|chu vuon|owner|ky thuat vien|technician|ktv)\??$/.test(normalized.trim());
   if (!asksIdentity) return null;
   const requestedRole = normalized.includes('quan tri') || normalized.includes('admin')
     ? 'admin'
@@ -126,7 +127,8 @@ router.post('/chat', async (req, res) => {
   const groundedFoodAnswer = answerGroundedFoodQuestion(message);
   if (groundedFoodAnswer) return res.json({ reply: appendReference(groundedFoodAnswer, await findReferenceLink(message)), provider: 'system', source: 'verified-food-guide' });
   const directoryAnswer = answerDirectoryQuestion(message);
-  if (directoryAnswer) return res.json({ reply: appendReference(directoryAnswer, await findReferenceLink(message)), provider: 'system', source: 'users' });
+  // Danh bạ là dữ liệu nội bộ của GREEN ARGRIC, không gắn nguồn web không liên quan.
+  if (directoryAnswer) return res.json({ reply: formatPlainAnswer(directoryAnswer), provider: 'system', source: 'users', sources: [] });
   const webSources = await searchWebSources(message);
   if (!webSources.length) return res.status(503).json({ message: config.ai.tavilyApiKey ? 'Chưa tìm được bài viết phù hợp để kiểm chứng câu trả lời. Bạn hãy mô tả câu hỏi cụ thể hơn.' : 'Chưa cấu hình TAVILY_API_KEY nên trợ lý không thể tìm nguồn kiểm chứng.', code: 'VERIFIED_SOURCE_UNAVAILABLE' });
   const systemContext = {
