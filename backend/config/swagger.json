@@ -35,8 +35,13 @@
                   },
                   "password": {
                     "type": "string"
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": ["admin", "owner", "technician"]
                   }
-                }
+                },
+                "required": ["email", "password", "role"]
               }
             }
           }

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { store, nextId } from '../data/store.js';
-import { persistUser, updatePersistedUser } from '../db.js';
+import { deletePersistedUser, persistUser, updatePersistedUser } from '../db.js';
 import { allowRoles } from '../middleware/auth.js';
 
 const router = Router();
@@ -17,6 +17,7 @@ const publicUser = (user) => ({
   email: user.email,
   status: user.status,
   created_at: user.created_at || null,
+  last_login_at: user.last_login_at || null,
   role: store.roles.find((role) => role.role_id === user.role_id)?.role_name,
 });
 
@@ -94,7 +95,10 @@ router.put('/:id', allowRoles('admin'), async (req, res) => {
     item.email = email;
   }
   if (req.body.full_name) item.full_name = String(req.body.full_name).trim();
-  if (req.body.status && statuses.has(req.body.status)) item.status = req.body.status;
+  if (req.body.status && statuses.has(req.body.status)) {
+    if (item.user_id === req.user.id && req.body.status !== 'active') return res.status(400).json({ message: 'Không thể tự khóa hoặc cấm tài khoản đang đăng nhập' });
+    item.status = req.body.status;
+  }
   if (req.body.password) {
     if (String(req.body.password).length < 6) return res.status(400).json({ message: 'Mật khẩu phải có ít nhất 6 ký tự' });
     item.password_hash = await bcrypt.hash(String(req.body.password), 10);
@@ -110,6 +114,19 @@ router.post('/:id/toggle', allowRoles('admin'), async (req, res) => {
   item.status = item.status === 'active' ? 'locked' : 'active';
   await updatePersistedUser(item);
   return res.json(publicUser(item));
+});
+
+router.delete('/:id', allowRoles('admin'), async (req, res) => {
+  const userId = Number(req.params.id);
+  const index = store.users.findIndex((user) => user.user_id === userId);
+  if (index < 0) return res.status(404).json({ message: 'Không tìm thấy người dùng' });
+  if (userId === req.user.id) return res.status(400).json({ message: 'Không thể xóa tài khoản quản trị đang đăng nhập' });
+  if (store.areas.some((area) => area.owner_id === userId)) return res.status(409).json({ message: 'Không thể xóa tài khoản đang quản lý khu vực trồng' });
+  if (store.tasks.some((task) => task.assigned_to === userId)) return res.status(409).json({ message: 'Không thể xóa tài khoản đang được giao công việc' });
+  if (store.messages.some((message) => message.sender_id === userId || message.receiver_id === userId) || store.commands.some((command) => command.user_id === userId)) return res.status(409).json({ message: 'Không thể xóa tài khoản đang có lịch sử tin nhắn hoặc điều khiển thiết bị; hãy cấm tài khoản thay vì xóa' });
+  store.users.splice(index, 1);
+  await deletePersistedUser(userId);
+  return res.json({ message: 'Đã xóa tài khoản thành công' });
 });
 
 export default router;

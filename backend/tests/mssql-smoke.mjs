@@ -2,7 +2,7 @@ const apiUrl = process.env.TEST_API_URL || 'http://127.0.0.1:3103';
 const phase = process.env.TEST_PHASE || 'write';
 const marker = Number(process.env.TEST_READING_VALUE || '29.876');
 
-const loginResponse = await fetch(`${apiUrl}/auth/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'admin@greenargric.edu.vn', password: 'greenargric2026' }) });
+const loginResponse = await fetch(`${apiUrl}/auth/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'admin@greenargric.edu.vn', password: 'greenargric2026', role: 'admin' }) });
 if (!loginResponse.ok) throw new Error(`MSSQL login failed: ${loginResponse.status} ${await loginResponse.text()}`);
 const { token } = await loginResponse.json();
 const headers = { 'content-type': 'application/json', authorization: `Bearer ${token}` };

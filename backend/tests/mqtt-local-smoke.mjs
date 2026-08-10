@@ -12,7 +12,7 @@ const waitFor = async (check, timeout = 5000) => {
 
 await new Promise((resolve, reject) => { client.once('connect', resolve); client.once('error', reject); });
 
-const loginResponse = await fetch(`${apiUrl}/auth/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'admin@greenargric.edu.vn', password: 'greenargric2026' }) });
+const loginResponse = await fetch(`${apiUrl}/auth/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'admin@greenargric.edu.vn', password: 'greenargric2026', role: 'admin' }) });
 if (!loginResponse.ok) throw new Error(`Login failed: ${loginResponse.status}`);
 const { token } = await loginResponse.json();
 const headers = { 'content-type': 'application/json', authorization: `Bearer ${token}` };

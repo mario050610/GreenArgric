@@ -4,8 +4,12 @@ import { allowRoles } from '../middleware/auth.js';
 
 const router = Router();
 
-router.get('/', allowRoles('admin', 'technician'), (req, res) => {
-  const visibleTasks = req.user.role === 'technician' ? store.tasks.filter((task) => task.assigned_to === req.user.id) : store.tasks;
+router.get('/', allowRoles('admin', 'owner', 'technician'), (req, res) => {
+  const visibleTasks = req.user.role === 'technician'
+    ? store.tasks.filter((task) => task.assigned_to === req.user.id)
+    : req.user.role === 'owner'
+      ? store.tasks.filter((task) => store.areas.some((area) => area.area_id === task.area_id && area.owner_id === req.user.id))
+      : store.tasks;
   const rows = visibleTasks.map((task) => ({
     ...task,
     area_name: store.areas.find((area) => area.area_id === task.area_id)?.area_name,
