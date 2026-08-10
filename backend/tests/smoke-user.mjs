@@ -2,10 +2,34 @@ const baseUrl = process.env.TEST_API_URL || 'http://127.0.0.1:3101';
 const login = await fetch(`${baseUrl}/auth/login`, {
   method: 'POST',
   headers: { 'content-type': 'application/json' },
-  body: JSON.stringify({ email: 'admin@greenargric.edu.vn', password: 'greenargric2026' }),
+  body: JSON.stringify({ email: 'admin@greenargric.edu.vn', password: 'greenargric2026', role: 'admin' }),
 });
 if (!login.ok) throw new Error(`Login failed: ${login.status}`);
 const auth = await login.json();
+for (const account of [
+  { email: 'quan.hmq@greenargric.edu.vn', role: 'owner' },
+  { email: 'nguyen.ppn@greenargric.edu.vn', role: 'admin' },
+  { email: 'khoa.thdk@greenargric.edu.vn', role: 'technician' },
+]) {
+  const aliasLogin = await fetch(`${baseUrl}/auth/login`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email: account.email, password: 'greenargric2026', role: account.role }),
+  });
+  const aliasBody = await aliasLogin.json();
+  if (!aliasLogin.ok || !aliasBody.token || aliasBody.user?.role !== account.role) {
+    throw new Error(`Login alias failed for ${account.email}: ${aliasLogin.status} ${JSON.stringify(aliasBody)}`);
+  }
+}
+const wrongRoleLogin = await fetch(`${baseUrl}/auth/login`, {
+  method: 'POST',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({ email: 'admin@greenargric.edu.vn', password: 'greenargric2026', role: 'owner' }),
+});
+const wrongRoleBody = await wrongRoleLogin.json();
+if (wrongRoleLogin.status !== 401 || wrongRoleBody.token || wrongRoleBody.message !== 'Thông tin không tồn tại, không chính xác hoặc bạn đã chọn sai vai trò của bạn.') {
+  throw new Error(`Wrong-role login was not rejected correctly: ${wrongRoleLogin.status} ${JSON.stringify(wrongRoleBody)}`);
+}
 const headers = { 'content-type': 'application/json', authorization: `Bearer ${auth.token}` };
 const initialUsers = await fetch(`${baseUrl}/user`, { headers });
 const initialUserRows = await initialUsers.json();
@@ -41,7 +65,7 @@ const passwordResponse = await fetch(`${baseUrl}/user/password`, {
 if (!passwordResponse.ok) throw new Error(`Change password failed: ${passwordResponse.status} ${await passwordResponse.text()}`);
 const changedLogin = await fetch(`${baseUrl}/auth/login`, {
   method: 'POST', headers: { 'content-type': 'application/json' },
-  body: JSON.stringify({ email: 'admin@greenargric.edu.vn', password: changedPassword }),
+  body: JSON.stringify({ email: 'admin@greenargric.edu.vn', password: changedPassword, role: 'admin' }),
 });
 if (!changedLogin.ok) throw new Error(`Login with changed password failed: ${changedLogin.status}`);
 const changedAuth = await changedLogin.json();
@@ -50,7 +74,7 @@ const restoreResponse = await fetch(`${baseUrl}/user/password`, {
   body: JSON.stringify({ current_password: changedPassword, new_password: 'greenargric2026' }),
 });
 if (!restoreResponse.ok) throw new Error(`Restore password failed: ${restoreResponse.status}`);
-const ownerLogin = await fetch(`${baseUrl}/auth/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'owner@greenargric.edu.vn', password: 'greenargric2026' }) });
+const ownerLogin = await fetch(`${baseUrl}/auth/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'owner@greenargric.edu.vn', password: 'greenargric2026', role: 'owner' }) });
 const ownerAuth = await ownerLogin.json();
 const ownerHeaders = { 'content-type': 'application/json', authorization: `Bearer ${ownerAuth.token}` };
 const newAreaResponse = await fetch(`${baseUrl}/area`, { method: 'POST', headers: ownerHeaders, body: JSON.stringify({ area_name: 'Khu smoke', crop_type: 'Rau thử nghiệm', location: '20 m²', description: 'Kiểm thử thêm khu vực' }) });
@@ -77,7 +101,7 @@ if (ownerMessage.status !== 201) throw new Error(`Owner send message failed: ${o
 const adminConversation = await fetch(`${baseUrl}/message/conversation/2`, { headers });
 const adminMessages = await adminConversation.json();
 if (!adminMessages.some((message) => message.content === 'Tin nhắn smoke test từ chủ vườn')) throw new Error('Admin did not receive owner message');
-const techLogin = await fetch(`${baseUrl}/auth/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'tech@greenargric.edu.vn', password: 'greenargric2026' }) });
+const techLogin = await fetch(`${baseUrl}/auth/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'tech@greenargric.edu.vn', password: 'greenargric2026', role: 'technician' }) });
 const techAuth = await techLogin.json();
 const techHeaders = { 'content-type': 'application/json', authorization: `Bearer ${techAuth.token}` };
 const adminToTech = await fetch(`${baseUrl}/message`, { method: 'POST', headers, body: JSON.stringify({ receiver_id: 3, content: 'Tin nhắn smoke test từ quản trị viên' }) });

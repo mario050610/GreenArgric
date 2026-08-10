@@ -211,6 +211,44 @@ function Sidebar({ active, role, onNavigate, onLogout }: {
   const userInitial = role === "owner" ? "Q" : role === "admin" ? "N" : "K";
   const userRole = role === "owner" ? "Chủ vườn" : role === "admin" ? "Quản trị viên" : "Kỹ thuật viên";
   const menuLabel = role === "owner" ? "Quản lý vườn" : role === "admin" ? "Quản trị hệ thống" : "Công việc kỹ thuật";
+  const [managedAreaText, setManagedAreaText] = useState("Đang tải phân công...");
+
+  useEffect(() => {
+    let cancelled = false;
+    const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:3000";
+    const token = localStorage.getItem("greenArgricToken");
+    let currentUser: any = null;
+    try { currentUser = JSON.parse(localStorage.getItem("greenArgricUser") || "null"); } catch { /* bỏ qua dữ liệu phiên lỗi */ }
+    const headers = token ? { authorization: `Bearer ${token}` } : undefined;
+
+    const loadAssignment = async () => {
+      try {
+        if (role === "tech") {
+          const response = await fetch(`${apiUrl}/task`, { headers });
+          if (!response.ok) throw new Error("Không tải được công việc");
+          const tasks = await response.json();
+          const names = [...new Set(tasks.map((task: any) => task.area_name).filter(Boolean))] as string[];
+          if (!cancelled) setManagedAreaText(names.length ? `Phụ trách kỹ thuật: ${names.join(", ")}` : "Chưa được phân công khu vực");
+          return;
+        }
+
+        const response = await fetch(`${apiUrl}/area`, { headers });
+        if (!response.ok) throw new Error("Không tải được khu vực");
+        const areas = await response.json();
+        const visibleAreas = role === "owner"
+          ? areas.filter((area: any) => Number(area.owner_id) === Number(currentUser?.id ?? currentUser?.user_id))
+          : areas;
+        const names = visibleAreas.map((area: any) => area.area_name).filter(Boolean);
+        const prefix = role === "admin" ? "Quản lý hệ thống" : "Khu vực quản lý";
+        if (!cancelled) setManagedAreaText(names.length ? `${prefix}: ${names.join(", ")}` : "Chưa được phân công khu vực");
+      } catch {
+        if (!cancelled) setManagedAreaText("Chưa tải được khu vực quản lý");
+      }
+    };
+
+    void loadAssignment();
+    return () => { cancelled = true; };
+  }, [role]);
 
   return (
     <div className="w-[260px] flex-shrink-0 flex flex-col sticky top-0 h-screen overflow-y-auto"
@@ -240,6 +278,11 @@ function Sidebar({ active, role, onNavigate, onLogout }: {
           <span className="text-xs font-semibold" style={{ color: role === "owner" ? "#86EFAC" : role === "admin" ? "#FCD34D" : "#93C5FD" }}>
             {role === "owner" ? "Chủ vườn" : role === "admin" ? "Quản trị viên" : "Kỹ thuật viên"}
           </span>
+        </div>
+        <div className="mt-2 px-3 py-2 rounded-xl border text-[11px] leading-4 break-words"
+          style={{ color: "rgba(255,255,255,0.85)", borderColor: "rgba(255,255,255,0.12)", background: "rgba(0,0,0,0.08)" }}>
+          <Map size={13} className="inline-block mr-1.5 -mt-0.5" />
+          {managedAreaText}
         </div>
       </div>
 
@@ -367,16 +410,16 @@ function Header({ screen, role, onNavigate }: { screen: Screen; role: Role; onNa
 
 function LoginScreen({ onLogin }: { onLogin: (role: Role, username: string, password: string) => Promise<void> }) {
   const [selectedRole, setSelectedRole] = useState<Role>("owner");
-  const [username, setUsername] = useState("owner@greenargric.edu.vn");
+  const [username, setUsername] = useState("quan.hmq@greenargric.edu.vn");
   const [password, setPassword] = useState("greenargric2026");
   const [showPwd, setShowPwd] = useState(false);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   const roleInfo: Record<Role, { label: string; color: string; bg: string; user: string; accent: string }> = {
-    owner: { label: "Chủ vườn", color: "#2E7D32", bg: "#E8F5E9", user: "owner@greenargric.edu.vn", accent: "#2E7D32" },
-    admin: { label: "Quản trị viên", color: "#B45309", bg: "#FEF3C7", user: "admin@greenargric.edu.vn", accent: "#D97706" },
-    tech:  { label: "Kỹ thuật viên", color: "#1D4ED8", bg: "#EFF6FF", user: "tech@greenargric.edu.vn", accent: "#2563EB" },
+    owner: { label: "Chủ vườn", color: "#2E7D32", bg: "#E8F5E9", user: "quan.hmq@greenargric.edu.vn", accent: "#2E7D32" },
+    admin: { label: "Quản trị viên", color: "#B45309", bg: "#FEF3C7", user: "nguyen.ppn@greenargric.edu.vn", accent: "#D97706" },
+    tech:  { label: "Kỹ thuật viên", color: "#1D4ED8", bg: "#EFF6FF", user: "khoa.thdk@greenargric.edu.vn", accent: "#2563EB" },
   };
 
   const handleRoleChange = (r: Role) => {
@@ -488,9 +531,9 @@ function LoginScreen({ onLogin }: { onLogin: (role: Role, username: string, pass
           <div className="mt-5 p-4 rounded-2xl border" style={{ background: info.bg, borderColor: info.color + "33" }}>
             <p className="text-xs font-bold mb-2" style={{ color: info.color }}>Tài khoản demo:</p>
             <div className="space-y-1 text-xs" style={{ color: info.color }}>
-              <div><span className="font-semibold">Chủ vườn:</span> quan.hmq</div>
-              <div><span className="font-semibold">Quản trị viên:</span> nguyen.ppn</div>
-              <div><span className="font-semibold">Kỹ thuật viên:</span> khoa.thdk</div>
+              <div><span className="font-semibold">Chủ vườn:</span> quan.hmq@greenargric.edu.vn</div>
+              <div><span className="font-semibold">Quản trị viên:</span> nguyen.ppn@greenargric.edu.vn</div>
+              <div><span className="font-semibold">Kỹ thuật viên:</span> khoa.thdk@greenargric.edu.vn</div>
               <div className="mt-1"><span className="font-semibold">Mật khẩu:</span> greenargric2026</div>
             </div>
           </div>
@@ -1482,6 +1525,8 @@ function ThresholdsScreen() {
 
 function ZonesScreen() {
   const [zones, setZones] = useState(ZONES);
+  const [zoneOwners, setZoneOwners] = useState<Record<number, number>>({});
+  const [zoneTab, setZoneTab] = useState<"all" | "mine">("all");
   const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:3000";
   const apiHeaders = () => ({ "content-type": "application/json", authorization: `Bearer ${localStorage.getItem("greenArgricToken")}` });
   const [selectedZoneId, setSelectedZoneId] = useState<number | null>(null);
@@ -1489,6 +1534,12 @@ function ZonesScreen() {
   const [manageDraft, setManageDraft] = useState<{ name: string; crop: string; area: string; health: number; status: string } | null>(null);
   const selectedZone = selectedZoneId != null ? zones.find(z => z.id === selectedZoneId) : null;
   const selectedDetail = selectedZoneId != null ? ZONE_DETAIL_DATA[selectedZoneId] || ZONE_DETAIL_DATA[1] : null;
+  let currentUserId: number | null = null;
+  try {
+    const currentUser = JSON.parse(localStorage.getItem("greenArgricUser") || "null");
+    currentUserId = Number(currentUser?.id ?? currentUser?.user_id) || null;
+  } catch { /* phiên đăng nhập không hợp lệ */ }
+  const visibleZones = zoneTab === "mine" ? zones.filter(zone => zoneOwners[zone.id] === currentUserId) : zones;
 
   const stSt = (s: string) => ({
     good: { bg: "#F0FDF4", border: "#BBF7D0", c: "#2E7D32", l: "Tốt" },
@@ -1503,6 +1554,7 @@ function ZonesScreen() {
     const response = await fetch(`${apiUrl}/area`, { headers: apiHeaders() });
     if (!response.ok) return;
     const rows = await response.json();
+    setZoneOwners(Object.fromEntries(rows.map((area: any) => [Number(area.area_id), Number(area.owner_id)])));
     setZones(rows.map((area: any) => {
       const existing = ZONES.find(zone => zone.id === area.area_id);
       return existing ? {
@@ -1547,12 +1599,22 @@ function ZonesScreen() {
           <Plus size={16} /> Thêm khu vực trồng
         </button>
       </div>
+      <div className="inline-flex items-center gap-1 rounded-xl bg-gray-100 p-1">
+        <button onClick={() => { setZoneTab("all"); setSelectedZoneId(null); }}
+          className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${zoneTab === "all" ? "bg-white text-green-700 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
+          Toàn bộ
+        </button>
+        <button onClick={() => { setZoneTab("mine"); setSelectedZoneId(null); }}
+          className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${zoneTab === "mine" ? "bg-white text-green-700 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
+          Khu vực trồng của bạn
+        </button>
+      </div>
       <div className="grid grid-cols-4 gap-4">
         {[
-          { l: "Tổng khu vực", v: zones.length, c: "#1F2937", bg: "white" },
-          { l: "Hoạt động tốt", v: zones.filter(z => z.status === "good").length, c: "#2E7D32", bg: "#F0FDF4" },
-          { l: "Cần chú ý", v: zones.filter(z => z.status === "warning").length, c: "#F59E0B", bg: "#FFFBEB" },
-          { l: "Nguy hiểm", v: zones.filter(z => z.status === "danger").length, c: "#EF4444", bg: "#FEF2F2" },
+          { l: "Tổng khu vực", v: visibleZones.length, c: "#1F2937", bg: "white" },
+          { l: "Hoạt động tốt", v: visibleZones.filter(z => z.status === "good").length, c: "#2E7D32", bg: "#F0FDF4" },
+          { l: "Cần chú ý", v: visibleZones.filter(z => z.status === "warning").length, c: "#F59E0B", bg: "#FFFBEB" },
+          { l: "Nguy hiểm", v: visibleZones.filter(z => z.status === "danger").length, c: "#EF4444", bg: "#FEF2F2" },
         ].map(s => (
           <div key={s.l} className="rounded-2xl p-4 shadow-sm" style={{ background: s.bg === "white" ? "#fff" : s.bg }}>
             <div className="text-3xl font-bold" style={{ color: s.c }}>{s.v}</div>
@@ -1562,7 +1624,7 @@ function ZonesScreen() {
       </div>
 
       <div className="grid grid-cols-3 gap-4">
-        {zones.map(z => {
+        {visibleZones.map(z => {
           const st = stSt(z.status);
           const bc = z.health >= 80 ? "#2E7D32" : z.health >= 65 ? "#F59E0B" : "#EF4444";
           return (
@@ -1600,6 +1662,11 @@ function ZonesScreen() {
           );
         })}
       </div>
+      {zoneTab === "mine" && visibleZones.length === 0 && (
+        <div className="bg-white rounded-2xl border border-dashed border-gray-200 p-10 text-center text-sm text-gray-500">
+          Tài khoản của bạn chưa được phân công khu vực trồng nào.
+        </div>
+      )}
 
       {/* Inline slide-in drawer */}
       {selectedZoneId != null && selectedZone && selectedDetail && (() => {
@@ -4720,8 +4787,9 @@ export default function App() {
     urlScreen && urlRole ? urlRole : null
   );
 
-  const handleLogin = async (_selectedRole: Role, username: string, password: string) => {
-    const response = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:3000"}/auth/login`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: username.trim(), password }) });
+  const handleLogin = async (selectedRole: Role, username: string, password: string) => {
+    const apiRole = selectedRole === "tech" ? "technician" : selectedRole;
+    const response = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:3000"}/auth/login`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: username.trim(), password, role: apiRole }) });
     const result = await response.json();
     if (!response.ok) throw new Error(result.message || "Đăng nhập thất bại");
     localStorage.setItem("greenArgricToken", result.token);
