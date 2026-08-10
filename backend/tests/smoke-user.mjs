@@ -51,6 +51,17 @@ const ownerAccountResponse = await fetch(`${baseUrl}/user`, {
 });
 const ownerAccount = await ownerAccountResponse.json();
 if (ownerAccountResponse.status !== 201 || ownerAccount.role !== 'owner') throw new Error(`Create owner failed: ${ownerAccountResponse.status} ${JSON.stringify(ownerAccount)}`);
+for (const expectedStatus of ['locked', 'inactive', 'active']) {
+  const statusResponse = await fetch(`${baseUrl}/user/${ownerAccount.id}`, { method: 'PUT', headers, body: JSON.stringify({ status: expectedStatus }) });
+  const statusBody = await statusResponse.json();
+  if (!statusResponse.ok || statusBody.status !== expectedStatus) throw new Error(`Set user status ${expectedStatus} failed: ${statusResponse.status} ${JSON.stringify(statusBody)}`);
+}
+const deleteOwnerAccountResponse = await fetch(`${baseUrl}/user/${ownerAccount.id}`, { method: 'DELETE', headers });
+if (!deleteOwnerAccountResponse.ok) throw new Error(`Delete unassigned account failed: ${deleteOwnerAccountResponse.status} ${await deleteOwnerAccountResponse.text()}`);
+const deleteAssignedOwnerResponse = await fetch(`${baseUrl}/user/2`, { method: 'DELETE', headers });
+if (deleteAssignedOwnerResponse.status !== 409) throw new Error(`Assigned owner deletion was not blocked: ${deleteAssignedOwnerResponse.status}`);
+const disableCurrentAdminResponse = await fetch(`${baseUrl}/user/${auth.user.id}`, { method: 'PUT', headers, body: JSON.stringify({ status: 'inactive' }) });
+if (disableCurrentAdminResponse.status !== 400) throw new Error(`Current admin self-ban was not blocked: ${disableCurrentAdminResponse.status}`);
 const deviceResponse = await fetch(`${baseUrl}/device`, {
   method: 'POST', headers,
   body: JSON.stringify({ area_id: 1, device_code: `TEST-${Date.now()}`, device_name: 'Thiết bị kiểm thử', device_type: 'fan' }),
@@ -77,6 +88,14 @@ if (!restoreResponse.ok) throw new Error(`Restore password failed: ${restoreResp
 const ownerLogin = await fetch(`${baseUrl}/auth/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'owner@greenargric.edu.vn', password: 'greenargric2026', role: 'owner' }) });
 const ownerAuth = await ownerLogin.json();
 const ownerHeaders = { 'content-type': 'application/json', authorization: `Bearer ${ownerAuth.token}` };
+const ownerDevicesResponse = await fetch(`${baseUrl}/device`, { headers: ownerHeaders });
+const ownerDevices = await ownerDevicesResponse.json();
+if (!ownerDevicesResponse.ok || !ownerDevices.length || ownerDevices.some((device) => ![1, 2, 3, 4].includes(device.area_id))) throw new Error(`Owner device area ACL failed: ${ownerDevicesResponse.status} ${JSON.stringify(ownerDevices)}`);
+const foreignDeviceControlResponse = await fetch(`${baseUrl}/device/override`, { method: 'POST', headers: ownerHeaders, body: JSON.stringify({ device_id: 11, state: 'OFF' }) });
+if (foreignDeviceControlResponse.status !== 403) throw new Error(`Owner controlled foreign-area device: ${foreignDeviceControlResponse.status} ${await foreignDeviceControlResponse.text()}`);
+const ownerTaskListResponse = await fetch(`${baseUrl}/task`, { headers: ownerHeaders });
+const ownerTaskList = await ownerTaskListResponse.json();
+if (!ownerTaskListResponse.ok || ownerTaskList.length !== 8 || ownerTaskList.some((task) => ![1, 2, 3, 4].includes(task.area_id))) throw new Error(`Owner task area ACL failed: ${ownerTaskListResponse.status} ${JSON.stringify(ownerTaskList)}`);
 const newAreaResponse = await fetch(`${baseUrl}/area`, { method: 'POST', headers: ownerHeaders, body: JSON.stringify({ area_name: 'Khu smoke', crop_type: 'Rau thử nghiệm', location: '20 m²', description: 'Kiểm thử thêm khu vực' }) });
 const newArea = await newAreaResponse.json();
 if (newAreaResponse.status !== 201 || newArea.owner_id !== ownerAuth.user.id) throw new Error(`Owner create area failed: ${newAreaResponse.status} ${JSON.stringify(newArea)}`);
@@ -219,13 +238,13 @@ const managers = await managerResponse.json();
 if (!managerResponse.ok || managers.source !== 'green-argric-data' || !managers.reply.includes('Huỳnh Minh Quân') || !managers.reply.includes('Nguyễn Thúy Ái') || !managers.reply.includes('Trần Thị Nhi') || managers.reply.includes('Trần Huỳnh Đăng Khoa') || managers.reply.includes('Nguồn tham khảo')) throw new Error(`Area manager query failed: ${JSON.stringify(managers)}`);
 const technicianTasksResponse = await fetch(`${baseUrl}/ai/chat`, { method: 'POST', headers: techHeaders, body: JSON.stringify({ message: 'Công việc của tôi là gì?' }) });
 const technicianTasks = await technicianTasksResponse.json();
-if (!technicianTasksResponse.ok || technicianTasks.source !== 'green-argric-data' || !technicianTasks.reply.includes('Kiểm tra cảm biến pH Khu A') || !technicianTasks.reply.includes('Kiểm tra cảm biến pH Khu J') || technicianTasks.reply.split('\n').length !== 4 || technicianTasks.reply.includes('Nguồn tham khảo')) throw new Error(`Technician task AI query failed: ${technicianTasksResponse.status} ${JSON.stringify(technicianTasks)}`);
+if (!technicianTasksResponse.ok || technicianTasks.source !== 'green-argric-data' || !technicianTasks.reply.includes('Kiểm tra cảm biến pH Khu A') || !technicianTasks.reply.includes('Kiểm tra cảm biến pH Khu J') || technicianTasks.reply.split('\n').length !== 8 || technicianTasks.reply.includes('Nguồn tham khảo')) throw new Error(`Technician task AI query failed: ${technicianTasksResponse.status} ${JSON.stringify(technicianTasks)}`);
 const technicianTaskListResponse = await fetch(`${baseUrl}/task`, { headers: techHeaders });
 const technicianTaskList = await technicianTaskListResponse.json();
-if (!technicianTaskListResponse.ok || technicianTaskList.length !== 4 || technicianTaskList.some((task) => task.assigned_to !== techAuth.user.id)) throw new Error(`Technician task privacy failed: ${technicianTaskListResponse.status} ${JSON.stringify(technicianTaskList)}`);
+if (!technicianTaskListResponse.ok || technicianTaskList.length !== 8 || technicianTaskList.some((task) => task.assigned_to !== techAuth.user.id)) throw new Error(`Technician task privacy failed: ${technicianTaskListResponse.status} ${JSON.stringify(technicianTaskList)}`);
 const ownerAppointmentsResponse = await fetch(`${baseUrl}/ai/chat`, { method: 'POST', headers: ownerHeaders, body: JSON.stringify({ message: 'Lịch hẹn và công việc kỹ thuật viên sẽ làm cho vườn của tôi?' }) });
 const ownerAppointments = await ownerAppointmentsResponse.json();
-if (!ownerAppointmentsResponse.ok || ownerAppointments.reply.split('\n').length !== 4 || !['A','B','C','D'].every((code) => ownerAppointments.reply.includes(`Khu ${code}`)) || /Khu [E-L]/.test(ownerAppointments.reply)) throw new Error(`Owner appointment ACL failed: ${JSON.stringify(ownerAppointments)}`);
+if (!ownerAppointmentsResponse.ok || ownerAppointments.reply.split('\n').length !== 8 || !['A','B','C','D'].every((code) => ownerAppointments.reply.includes(`Khu ${code}`)) || /Khu [E-L]/.test(ownerAppointments.reply)) throw new Error(`Owner appointment ACL failed: ${JSON.stringify(ownerAppointments)}`);
 const repairTechniciansResponse = await fetch(`${baseUrl}/ai/chat`, { method: 'POST', headers: ownerHeaders, body: JSON.stringify({ message: 'Kỹ thuật viên nào sẽ đến sửa?' }) });
 const repairTechnicians = await repairTechniciansResponse.json();
 if (!repairTechniciansResponse.ok || repairTechnicians.source !== 'green-argric-data' || !repairTechnicians.reply.includes('Trần Huỳnh Đăng Khoa') || !repairTechnicians.reply.includes('Nguyễn Thanh Tâm') || !repairTechnicians.reply.includes('Nguyễn Văn Đức') || repairTechnicians.reply.includes('Nguồn tham khảo') || repairTechnicians.reply.includes('http')) throw new Error(`Internal repair query failed: ${JSON.stringify(repairTechnicians)}`);

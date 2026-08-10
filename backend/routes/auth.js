@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { config } from '../config.js';
 import { store } from '../data/store.js';
+import { updatePersistedUser } from '../db.js';
 
 const router = Router();
 const loginFailureMessage = 'Thông tin không tồn tại, không chính xác hoặc bạn đã chọn sai vai trò của bạn.';
@@ -24,6 +25,8 @@ router.post('/login', async (req, res) => {
   const role = store.roles.find((item) => item.role_id === user.role_id)?.role_name || 'owner';
   if (!valid || role !== normalizedRole) return res.status(401).json({ message: loginFailureMessage });
   if (user.status !== 'active') return res.status(403).json({ message: 'Tài khoản đã bị khóa' });
+  user.last_login_at = new Date().toISOString();
+  await updatePersistedUser(user);
   const token = jwt.sign({ id: user.user_id, email: user.email, role, name: user.full_name }, config.jwtSecret, { expiresIn: config.jwtExpiresIn });
   res.json({ message: 'Đăng nhập thành công', token, user: { id: user.user_id, full_name: user.full_name, email: user.email, role } });
 });

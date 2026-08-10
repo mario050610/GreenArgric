@@ -156,6 +156,14 @@ export async function updatePersistedUser(user) {
     password_hash=@password_hash,status=@status WHERE user_id=@user_id`, user);
 }
 
+export async function deletePersistedUser(userId) {
+  if (!isSqlMode()) {
+    await saveMemoryUsers(store.users);
+    return;
+  }
+  await query('DELETE FROM [User] WHERE user_id=@user_id', { user_id: userId });
+}
+
 export async function persistArea(area) {
   if (!isSqlMode()) {
     await saveMemoryAreas([...store.areas.filter((item) => item.area_id !== area.area_id), area]);

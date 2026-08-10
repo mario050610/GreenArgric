@@ -17,6 +17,15 @@ if [[ -f "$PID_FILE" ]]; then
   rm -f -- "$PID_FILE"
 fi
 
+# PID file có thể bị thiếu khi WSL hoặc cửa sổ chạy trước đó bị đóng đột ngột.
+# Dừng đúng tiến trình còn giữ cổng API để tránh health check nhầm vào mã cũ.
+if command -v fuser >/dev/null 2>&1; then
+  port_pids="$(fuser 3000/tcp 2>/dev/null || true)"
+  for pid in $port_pids; do
+    [[ "$pid" =~ ^[0-9]+$ ]] && kill "$pid" 2>/dev/null || true
+  done
+fi
+
 # Chờ tiến trình cũ ngừng lắng nghe hẳn, tránh launcher thấy health cũ rồi thoát.
 for _ in {1..30}; do
   curl -fsS http://127.0.0.1:3000/health >/dev/null 2>&1 || break

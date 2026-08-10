@@ -5,6 +5,7 @@ const router = Router();
 const publicUser = (user) => ({
   id: user.user_id,
   full_name: user.full_name,
+  email: user.email,
   role: store.roles.find((role) => role.role_id === user.role_id)?.role_name || 'owner',
   status: user.status,
 });
@@ -13,9 +14,7 @@ const roleOf = (user) => store.roles.find((role) => role.role_id === user.role_i
 const canContact = (viewer, target) => {
   if (!target || target.user_id === viewer.id) return false;
   const targetRole = roleOf(target);
-  if (viewer.role === 'owner') return ['admin', 'owner', 'technician'].includes(targetRole);
-  if (viewer.role === 'admin') return targetRole === 'owner' || targetRole === 'technician';
-  return viewer.role === 'technician' && ['admin', 'owner', 'technician'].includes(targetRole);
+  return ['admin', 'owner', 'technician'].includes(targetRole);
 };
 
 router.get('/contacts', (req, res) => {

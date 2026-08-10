@@ -129,14 +129,24 @@ export const store = {
     { alert_id: 3, area_id: 1, sensor_type: 'ec', title: 'EC thấp', message: 'EC hiện tại 1.1 mS/cm', severity: 'high', status: 'resolved', created_at: iso(-240), resolved_at: iso(-200), resolved_by: 3 },
   ],
   commands: [],
-  tasks: ['A','B','C','D','E','F','G','H','I','J','K','L'].map((code, index) => ({
-    task_id: index + 1,
-    area_id: index + 1,
-    assigned_to: [3, 6, 8][index % 3],
-    title: index % 3 === 0 ? `Kiểm tra cảm biến pH Khu ${code}` : index % 3 === 1 ? `Bảo trì bơm tuần hoàn Khu ${code}` : `Kiểm tra đèn LED Khu ${code}`,
-    description: index % 3 === 0 ? 'Hiệu chuẩn và kiểm tra đầu dò pH' : index % 3 === 1 ? 'Vệ sinh bộ lọc và kiểm tra lưu lượng' : 'Đo cường độ và kiểm tra lịch chiếu sáng',
-    task_type: 'maintenance', scheduled_at: iso((index + 1) * 1440), status: 'pending',
-  })),
+  tasks: ['A','B','C','D','E','F','G','H','I','J','K','L'].flatMap((code, index) => ([
+    {
+      task_id: index * 2 + 1,
+      area_id: index + 1,
+      assigned_to: [3, 6, 8][index % 3],
+      title: index % 3 === 0 ? `Kiểm tra cảm biến pH Khu ${code}` : index % 3 === 1 ? `Bảo trì bơm tuần hoàn Khu ${code}` : `Kiểm tra đèn LED Khu ${code}`,
+      description: index % 3 === 0 ? 'Hiệu chuẩn và kiểm tra đầu dò pH' : index % 3 === 1 ? 'Vệ sinh bộ lọc và kiểm tra lưu lượng' : 'Đo cường độ và kiểm tra lịch chiếu sáng',
+      task_type: 'maintenance', scheduled_at: iso((index + 1) * 1440), status: 'pending',
+    },
+    {
+      task_id: index * 2 + 2,
+      area_id: index + 1,
+      assigned_to: [6, 8, 3][index % 3],
+      title: index % 3 === 0 ? `Lắp đặt cảm biến mực nước Khu ${code}` : index % 3 === 1 ? `Sửa chữa máy bơm tưới Khu ${code}` : `Lắp đặt quạt thông gió Khu ${code}`,
+      description: index % 3 === 0 ? 'Đi dây, cố định cảm biến và kiểm tra tín hiệu' : index % 3 === 1 ? 'Kiểm tra động cơ, đường ống và thay linh kiện hỏng' : 'Lắp giá đỡ, đấu relay và chạy thử thiết bị',
+      task_type: index % 3 === 1 ? 'repair' : 'installation', scheduled_at: iso((index + 2) * 1440 + 240), status: 'pending',
+    },
+  ])),
   messages: [
     { message_id: 1, sender_id: 2, receiver_id: 1, content: 'Nhờ quản trị viên kiểm tra kết nối gateway Khu A giúp tôi.', created_at: iso(-75), read_at: iso(-65) },
     { message_id: 2, sender_id: 1, receiver_id: 2, content: 'Đã nhận. Tôi đang kiểm tra nhật ký hệ thống.', created_at: iso(-60), read_at: iso(-55) },

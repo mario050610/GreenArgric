@@ -6,7 +6,14 @@ import { persistCommand, persistDevice, updatePersistedCommand, updatePersistedD
 
 const router = Router();
 
-router.get('/', (req, res) => res.json(store.devices.map((device) => ({
+const assignedAreaIds = (user) => new Set(store.tasks.filter((task) => task.assigned_to === user.id).map((task) => task.area_id));
+const canAccessArea = (user, areaId) => {
+  if (user.role === 'admin') return true;
+  if (user.role === 'owner') return store.areas.some((area) => area.area_id === areaId && area.owner_id === user.id);
+  return assignedAreaIds(user).has(areaId);
+};
+
+router.get('/', allowRoles('admin', 'owner', 'technician'), (req, res) => res.json(store.devices.filter((device) => canAccessArea(req.user, device.area_id)).map((device) => ({
   ...device,
   area_name: store.areas.find((area) => area.area_id === device.area_id)?.area_name,
 }))));
@@ -14,6 +21,7 @@ router.get('/', (req, res) => res.json(store.devices.map((device) => ({
 router.post('/override', allowRoles('admin', 'owner', 'technician'), async (req, res) => {
   const device = store.devices.find((item) => item.device_id === Number(req.body.device_id));
   if (!device) return res.status(404).json({ message: 'Không tìm thấy thiết bị' });
+  if (!canAccessArea(req.user, device.area_id)) return res.status(403).json({ message: 'Bạn chỉ có thể điều khiển thiết bị tại khu vực được phân công' });
 
   const state = String(req.body.state || req.body.mode || '').toUpperCase();
   if (!['ON', 'OFF'].includes(state)) {

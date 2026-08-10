@@ -3,7 +3,7 @@ import {
   Leaf, Droplets, Thermometer, Sun, Wind, AlertTriangle,
   BarChart2, Users, Settings, LogOut, Bell, Search, Activity,
   Home, Sliders, History, Map, CheckCircle, Clock, Plus,
-  Edit2, Trash2, Download, ChevronRight, Eye, EyeOff,
+  Edit2, Trash2, Download, ChevronLeft, ChevronRight, Eye, EyeOff,
   ArrowUp, ArrowDown, ArrowRight, Lock, Zap, Gauge, Mail,
   MessageCircle, Bot, Send, X, FileText, HelpCircle,
 } from "lucide-react";
@@ -24,7 +24,7 @@ type Screen =
   | "dashboard" | "environment" | "devices" | "history" | "alerts"
   | "thresholds" | "zones" | "tasks" | "users" | "notifications" | "profile"
   | "owner-yield" | "messages" | "reports" | "help"
-  | "logo";
+  | "logo" | "user-profile";
 
 // ── Data ─────────────────────────────────────────────────────────────────
 
@@ -279,11 +279,11 @@ function Sidebar({ active, role, onNavigate, onLogout }: {
             {role === "owner" ? "Chủ vườn" : role === "admin" ? "Quản trị viên" : "Kỹ thuật viên"}
           </span>
         </div>
-        <div className="mt-2 px-3 py-2 rounded-xl border text-[11px] leading-4 break-words"
+        {role !== "admin" && <div className="mt-2 px-3 py-2 rounded-xl border text-[11px] leading-4 break-words"
           style={{ color: "rgba(255,255,255,0.85)", borderColor: "rgba(255,255,255,0.12)", background: "rgba(0,0,0,0.08)" }}>
           <Map size={13} className="inline-block mr-1.5 -mt-0.5" />
           {managedAreaText}
-        </div>
+        </div>}
       </div>
 
       {/* Nav */}
@@ -356,9 +356,10 @@ const PAGE_TITLES: Record<Screen, string> = {
   reports: "Báo cáo & xuất dữ liệu",
   help: "Trợ giúp sử dụng",
   logo: "Nhận diện thương hiệu",
+  "user-profile": "Hồ sơ người dùng",
 };
 
-function Header({ screen, role, onNavigate }: { screen: Screen; role: Role; onNavigate: (screen: Screen) => void }) {
+function Header({ screen, role, onNavigate, onViewUser }: { screen: Screen; role: Role; onNavigate: (screen: Screen) => void; onViewUser: (user: any) => void }) {
   const userName = sessionUserName(role);
   const userInitial = role === "owner" ? "Q" : role === "admin" ? "N" : "K";
   const userRole = role === "owner" ? "Chủ vườn" : role === "admin" ? "Quản trị viên" : "Kỹ thuật viên";
@@ -368,6 +369,13 @@ function Header({ screen, role, onNavigate }: { screen: Screen; role: Role; onNa
   const [chatMode, setChatMode] = useState<"owner" | "ai">("ai");
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState([{ from: "ai", text: "Xin chào! Tôi có thể hỗ trợ phân tích tình trạng vườn và hướng dẫn vận hành." }]);
+  const [searchText, setSearchText] = useState("");
+  const [directory, setDirectory] = useState<any[]>([]);
+  useEffect(() => {
+    fetch(`${import.meta.env.VITE_API_URL || "http://localhost:3000"}/message/contacts`, { headers: { authorization: `Bearer ${localStorage.getItem("greenArgricToken")}` } }).then(response => response.ok ? response.json() : []).then(setDirectory);
+  }, []);
+  const normalizeSearch = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d").replace(/Đ/g, "D").toLowerCase().trim();
+  const searchResults = searchText.trim().length < 2 ? [] : directory.filter(user => normalizeSearch(`${user.full_name} ${user.email}`).includes(normalizeSearch(searchText))).slice(0, 6);
   const sendMessage = () => {
     const text = message.trim(); if (!text) return;
     const reply = chatMode === "owner" ? "Tin nhắn đã được gửi đến Chủ vườn Huỳnh Minh Quân." : /nhiệt|temperature/i.test(text) ? "Nhiệt độ hiện tại trong bộ dữ liệu là 27.8°C, vẫn nằm trong ngưỡng cấu hình 22–30°C." : /ph/i.test(text) ? "pH hiện tại là 6.3. Khuyến nghị duy trì trong khoảng 5.8–6.5." : /cảnh báo/i.test(text) ? "Hệ thống đang có 2 cảnh báo chưa xử lý. Bạn nên ưu tiên cảnh báo pH và nhiệt độ." : "Tôi đã ghi nhận. Bạn có thể hỏi về nhiệt độ, pH, cảnh báo hoặc trạng thái thiết bị.";
@@ -382,9 +390,10 @@ function Header({ screen, role, onNavigate }: { screen: Screen; role: Role; onNa
         <p className="text-xs text-gray-400">Cập nhật: 29/06/2026 · 10:45:22</p>
       </div>
       <div className="flex items-center gap-3">
-        <div className="flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2 w-52">
+        <div className="relative flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2 w-60">
           <Search size={14} className="text-gray-400 flex-shrink-0" />
-          <input className="bg-transparent text-sm text-gray-600 outline-none w-full placeholder-gray-400" placeholder="Tìm kiếm..." />
+          <input value={searchText} onChange={event => setSearchText(event.target.value)} className="bg-transparent text-sm text-gray-600 outline-none w-full placeholder-gray-400" placeholder="Tìm tên tài khoản..." />
+          {searchResults.length > 0 && <div className="absolute left-0 right-0 top-11 z-30 bg-white border border-gray-100 rounded-xl shadow-xl p-1.5">{searchResults.map(user => <button key={user.id} onClick={() => { onViewUser(user); setSearchText(""); }} className="w-full p-2.5 rounded-lg text-left hover:bg-green-50"><div className="text-sm font-semibold text-gray-800">{user.full_name}</div><div className="text-xs text-gray-400">{user.role === "owner" ? "Chủ vườn" : user.role === "admin" ? "Quản trị viên" : "Kỹ thuật viên"} · {user.email}</div></button>)}</div>}
         </div>
         <button onClick={() => onNavigate("messages")} className="relative w-10 h-10 rounded-xl bg-gray-50 flex items-center justify-center hover:bg-gray-100 transition-colors" title="Tin nhắn và trợ lý AI"><MessageCircle size={17} className="text-gray-600" /></button>
         <button onClick={() => { setNotificationsOpen(!notificationsOpen); setUnread(0); }} className="relative w-10 h-10 rounded-xl bg-gray-50 flex items-center justify-center hover:bg-gray-100 transition-colors">
@@ -1138,7 +1147,27 @@ function DevicesScreen({ role }: { role: Role }) {
 // Owner: device control with ON/OFF toggles grouped by zone
 function DeviceControlView() {
   const [devices, setDevices] = useState(DEVICES_INIT);
-  const toggle = (id: number) => setDevices(d => d.map(dev => dev.id === id ? { ...dev, on: !dev.on } : dev));
+  const [statusFilter, setStatusFilter] = useState<"all" | "on" | "off">("all");
+  const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:3000";
+  const apiHeaders = () => ({ "content-type": "application/json", authorization: `Bearer ${localStorage.getItem("greenArgricToken")}` });
+  useEffect(() => {
+    fetch(`${apiUrl}/device`, { headers: apiHeaders() }).then(async response => {
+      if (!response.ok) throw new Error((await response.json()).message || "Không tải được thiết bị");
+      return response.json();
+    }).then(rows => setDevices(rows.map((device: any) => {
+      const existing = DEVICES_INIT.find(item => item.name === device.device_name && item.zone === device.area_name);
+      const type = device.device_type === "grow_light" ? "light" : device.device_type === "fan" ? "fan" : device.device_type === "dosing_pump" ? "dosing" : "pump";
+      return { id: device.device_id, name: device.device_name, zone: device.area_name || "Chưa phân khu", type, on: device.status === "ON", mode: String(device.mode || "MANUAL").toLowerCase(), watt: existing?.watt ?? 0, lastRun: device.last_seen ? new Date(device.last_seen).toLocaleString("vi-VN") : "Chưa ghi nhận" };
+    }))).catch(() => setDevices([]));
+  }, []);
+  const toggle = async (id: number) => {
+    const current = devices.find(device => device.id === id);
+    if (!current) return;
+    const response = await fetch(`${apiUrl}/device/override`, { method: "POST", headers: apiHeaders(), body: JSON.stringify({ device_id: id, state: current.on ? "OFF" : "ON", control_mode: "MANUAL" }) });
+    const result = await response.json();
+    if (!response.ok) return window.alert(result.message || "Không thể điều khiển thiết bị");
+    setDevices(rows => rows.map(device => device.id === id ? { ...device, on: result.device?.status === "ON", lastRun: "Vừa xong" } : device));
+  };
   const typeIcon: Record<string, any> = { pump: Droplets, light: Sun, fan: Wind, dosing: Zap };
   const modeStyle: Record<string, { bg: string; color: string; label: string }> = {
     auto: { bg: "#EFF6FF", color: "#3B82F6", label: "Tự động" },
@@ -1147,6 +1176,7 @@ function DeviceControlView() {
   };
   const totalOn = devices.filter(d => d.on).length;
   const totalWatt = devices.filter(d => d.on).reduce((s, d) => s + d.watt, 0);
+  const visibleDevices = devices.filter(device => statusFilter === "all" || (statusFilter === "on" ? device.on : !device.on));
 
   return (
     <div className="space-y-5">
@@ -1164,8 +1194,12 @@ function DeviceControlView() {
         ))}
       </div>
 
+      <div className="inline-flex gap-1 rounded-xl bg-gray-100 p-1">
+        {(["all", "on", "off"] as const).map(value => <button key={value} onClick={() => setStatusFilter(value)} className={`px-4 py-2 rounded-lg text-sm font-semibold ${statusFilter === value ? "bg-white text-green-700 shadow-sm" : "text-gray-500"}`}>{value === "all" ? `Tất cả (${devices.length})` : value === "on" ? `Đang hoạt động (${totalOn})` : `Đang tắt (${devices.length - totalOn})`}</button>)}
+      </div>
+
       <div className="grid grid-cols-2 gap-4">
-        {devices.map(d => {
+        {visibleDevices.map(d => {
           const Icon = typeIcon[d.type] || Droplets;
           const ms = modeStyle[d.mode] || modeStyle.manual;
           return (
@@ -1526,7 +1560,9 @@ function ThresholdsScreen() {
 function ZonesScreen() {
   const [zones, setZones] = useState(ZONES);
   const [zoneOwners, setZoneOwners] = useState<Record<number, number>>({});
+  const [zoneManagers, setZoneManagers] = useState<Record<number, string>>({});
   const [zoneTab, setZoneTab] = useState<"all" | "mine">("all");
+  const [zoneStatusFilter, setZoneStatusFilter] = useState<"all" | "good" | "warning" | "danger">("all");
   const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:3000";
   const apiHeaders = () => ({ "content-type": "application/json", authorization: `Bearer ${localStorage.getItem("greenArgricToken")}` });
   const [selectedZoneId, setSelectedZoneId] = useState<number | null>(null);
@@ -1535,11 +1571,14 @@ function ZonesScreen() {
   const selectedZone = selectedZoneId != null ? zones.find(z => z.id === selectedZoneId) : null;
   const selectedDetail = selectedZoneId != null ? ZONE_DETAIL_DATA[selectedZoneId] || ZONE_DETAIL_DATA[1] : null;
   let currentUserId: number | null = null;
+  let currentUserRole = "";
   try {
     const currentUser = JSON.parse(localStorage.getItem("greenArgricUser") || "null");
     currentUserId = Number(currentUser?.id ?? currentUser?.user_id) || null;
+    currentUserRole = String(currentUser?.role || "");
   } catch { /* phiên đăng nhập không hợp lệ */ }
-  const visibleZones = zoneTab === "mine" ? zones.filter(zone => zoneOwners[zone.id] === currentUserId) : zones;
+  const scopedZones = zoneTab === "mine" ? zones.filter(zone => zoneOwners[zone.id] === currentUserId) : zones;
+  const visibleZones = scopedZones.filter(zone => zoneStatusFilter === "all" || zone.status === zoneStatusFilter);
 
   const stSt = (s: string) => ({
     good: { bg: "#F0FDF4", border: "#BBF7D0", c: "#2E7D32", l: "Tốt" },
@@ -1555,6 +1594,7 @@ function ZonesScreen() {
     if (!response.ok) return;
     const rows = await response.json();
     setZoneOwners(Object.fromEntries(rows.map((area: any) => [Number(area.area_id), Number(area.owner_id)])));
+    setZoneManagers(Object.fromEntries(rows.map((area: any) => [Number(area.area_id), String(area.owner_name || "Chưa phân công")] )));
     setZones(rows.map((area: any) => {
       const existing = ZONES.find(zone => zone.id === area.area_id);
       return existing ? {
@@ -1609,12 +1649,15 @@ function ZonesScreen() {
           Khu vực trồng của bạn
         </button>
       </div>
+      <div className="inline-flex items-center gap-1 rounded-xl bg-gray-100 p-1 ml-2">
+        {(["all", "good", "warning", "danger"] as const).map(value => <button key={value} onClick={() => { setZoneStatusFilter(value); setSelectedZoneId(null); }} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${zoneStatusFilter === value ? "bg-white text-green-700 shadow-sm" : "text-gray-500"}`}>{value === "all" ? `Tất cả tình trạng (${scopedZones.length})` : value === "good" ? `Tốt (${scopedZones.filter(zone => zone.status === value).length})` : value === "warning" ? `Cần chú ý (${scopedZones.filter(zone => zone.status === value).length})` : `Nguy hiểm (${scopedZones.filter(zone => zone.status === value).length})`}</button>)}
+      </div>
       <div className="grid grid-cols-4 gap-4">
         {[
-          { l: "Tổng khu vực", v: visibleZones.length, c: "#1F2937", bg: "white" },
-          { l: "Hoạt động tốt", v: visibleZones.filter(z => z.status === "good").length, c: "#2E7D32", bg: "#F0FDF4" },
-          { l: "Cần chú ý", v: visibleZones.filter(z => z.status === "warning").length, c: "#F59E0B", bg: "#FFFBEB" },
-          { l: "Nguy hiểm", v: visibleZones.filter(z => z.status === "danger").length, c: "#EF4444", bg: "#FEF2F2" },
+          { l: "Tổng khu vực", v: scopedZones.length, c: "#1F2937", bg: "white" },
+          { l: "Hoạt động tốt", v: scopedZones.filter(z => z.status === "good").length, c: "#2E7D32", bg: "#F0FDF4" },
+          { l: "Cần chú ý", v: scopedZones.filter(z => z.status === "warning").length, c: "#F59E0B", bg: "#FFFBEB" },
+          { l: "Nguy hiểm", v: scopedZones.filter(z => z.status === "danger").length, c: "#EF4444", bg: "#FEF2F2" },
         ].map(s => (
           <div key={s.l} className="rounded-2xl p-4 shadow-sm" style={{ background: s.bg === "white" ? "#fff" : s.bg }}>
             <div className="text-3xl font-bold" style={{ color: s.c }}>{s.v}</div>
@@ -1627,6 +1670,8 @@ function ZonesScreen() {
         {visibleZones.map(z => {
           const st = stSt(z.status);
           const bc = z.health >= 80 ? "#2E7D32" : z.health >= 65 ? "#F59E0B" : "#EF4444";
+          const canManage = currentUserRole === "admin" || (currentUserRole === "owner" && zoneOwners[z.id] === currentUserId);
+          const isManagedByAnotherOwner = currentUserRole === "owner" && zoneOwners[z.id] !== currentUserId;
           return (
             <div key={z.id} className="bg-white rounded-2xl p-5 shadow-sm border hover:shadow-md transition-shadow cursor-pointer"
               style={{ borderColor: z.status !== "good" ? st.border : "transparent" }}
@@ -1635,6 +1680,7 @@ function ZonesScreen() {
                 <div>
                   <h4 className="font-bold text-gray-800 text-xl">{z.name}</h4>
                   <p className="text-sm text-gray-500 font-medium">{z.crop}</p>
+                  {isManagedByAnotherOwner && <p className="text-xs text-blue-600 font-medium mt-1 flex items-center gap-1"><Users size={12}/>Được quản lý bởi {zoneManagers[z.id] || "Chưa phân công"}</p>}
                 </div>
                 <span className="text-xs font-bold px-2.5 py-1 rounded-full flex-shrink-0" style={{ background: st.bg, color: st.c }}>{st.l}</span>
               </div>
@@ -1656,7 +1702,7 @@ function ZonesScreen() {
               </div>
               <div className="flex gap-2">
                 <button onClick={e => { e.stopPropagation(); setDrawerMode("detail"); setSelectedZoneId(z.id); }} className="flex-1 text-xs py-2 rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50 font-medium transition-colors">Chi tiết</button>
-                <button onClick={e => { e.stopPropagation(); setManageDraft({ name: z.name, crop: z.crop, area: z.area, health: z.health, status: z.status }); setDrawerMode("manage"); setSelectedZoneId(z.id); }} className="flex-1 text-xs py-2 rounded-xl font-semibold text-white hover:opacity-90 transition-opacity" style={{ background: "#2E7D32" }}>Quản lý</button>
+                {canManage && <button onClick={e => { e.stopPropagation(); setManageDraft({ name: z.name, crop: z.crop, area: z.area, health: z.health, status: z.status }); setDrawerMode("manage"); setSelectedZoneId(z.id); }} className="flex-1 text-xs py-2 rounded-xl font-semibold text-white hover:opacity-90 transition-opacity" style={{ background: "#2E7D32" }}>Quản lý</button>}
               </div>
             </div>
           );
@@ -2032,18 +2078,32 @@ function ReportsScreen() {
 
 // ── Screen 10: Users ──────────────────────────────────────────────────────
 
-function UsersScreen() {
-  const [users, setUsers] = useState(USERS_INIT);
+function UsersScreen({ onViewProfile }: { onViewProfile: (user: any) => void }) {
+  const [users, setUsers] = useState<any[]>(USERS_INIT);
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "locked" | "inactive">("all");
+  const [, setClockTick] = useState(0);
   const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:3000";
+  const formatLastLogin = (value: string | null) => {
+    if (!value) return "Chưa từng đăng nhập";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "Chưa xác định";
+    const elapsedSeconds = Math.max(0, Math.floor((Date.now() - date.getTime()) / 1000));
+    if (elapsedSeconds < 60) return "Vừa xong";
+    if (elapsedSeconds < 3600) return `${Math.floor(elapsedSeconds / 60)} phút trước`;
+    if (elapsedSeconds < 86400) return `${Math.floor(elapsedSeconds / 3600)} giờ trước`;
+    if (elapsedSeconds < 172800) return `Hôm qua lúc ${date.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}`;
+    return date.toLocaleString("vi-VN", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit", year: "numeric" });
+  };
   const loadUsers = async () => {
     const token = localStorage.getItem("greenArgricToken");
     if (!token) return;
     const response = await fetch(`${apiUrl}/user`, { headers: { authorization: `Bearer ${token}` } });
     if (!response.ok) return;
     const rows = await response.json();
-    setUsers(rows.map((user: any) => ({ id: user.id, name: user.full_name, email: user.email, role: user.role === "admin" ? "admin" : user.role === "owner" ? "operator" : "viewer", dept: user.role === "admin" ? "Khoa CNTT" : user.role === "owner" ? "Khoa Nông học" : "Kỹ thuật", status: user.status === "active" ? "active" : "inactive", lastLogin: "-" })));
+    setUsers(rows.map((user: any) => ({ id: user.id, name: user.full_name, email: user.email, role: user.role === "admin" ? "admin" : user.role === "owner" ? "operator" : "viewer", apiRole: user.role, dept: user.role === "admin" ? "Khoa CNTT" : user.role === "owner" ? "Khoa Nông học" : "Kỹ thuật", status: user.status, lastLoginAt: user.last_login_at || null })));
   };
   useEffect(() => { void loadUsers(); }, []);
+  useEffect(() => { const timer = window.setInterval(() => setClockTick(value => value + 1), 30_000); return () => window.clearInterval(timer); }, []);
   const addUser = async () => {
     const full_name = window.prompt("Họ và tên tài khoản mới:"); if (!full_name) return;
     const email = window.prompt("Email:"); if (!email) return;
@@ -2064,16 +2124,28 @@ function UsersScreen() {
     const response = await fetch(`${apiUrl}/user/${user.id}`, { method: "PUT", headers: { "content-type": "application/json", authorization: `Bearer ${localStorage.getItem("greenArgricToken")}` }, body: JSON.stringify({ full_name, email, role: updatedRole }) });
     const result = await response.json(); if (!response.ok) return window.alert(result.message || "Không thể cập nhật tài khoản"); await loadUsers(); window.alert("Đã cập nhật tài khoản");
   };
-  const toggleUser = async (user: any) => {
-    if (!window.confirm(`${user.status === "active" ? "Khóa" : "Mở khóa"} tài khoản ${user.name}?`)) return;
-    const response = await fetch(`${apiUrl}/user/${user.id}/toggle`, { method: "POST", headers: { authorization: `Bearer ${localStorage.getItem("greenArgricToken")}` } });
-    const result = await response.json(); if (!response.ok) return window.alert(result.message || "Không thể đổi trạng thái tài khoản"); await loadUsers();
+  const setUserStatus = async (user: any, status: "active" | "locked" | "inactive") => {
+    const action = status === "active" ? "mở lại" : status === "locked" ? "khóa" : "cấm";
+    if (!window.confirm(`Bạn chắc chắn muốn ${action} tài khoản ${user.name}?`)) return;
+    const response = await fetch(`${apiUrl}/user/${user.id}`, { method: "PUT", headers: { "content-type": "application/json", authorization: `Bearer ${localStorage.getItem("greenArgricToken")}` }, body: JSON.stringify({ status }) });
+    const result = await response.json();
+    if (!response.ok) return window.alert(result.message || "Không thể đổi trạng thái tài khoản");
+    await loadUsers();
+  };
+  const deleteUser = async (user: any) => {
+    if (!window.confirm(`Xóa vĩnh viễn tài khoản ${user.name}? Thao tác này không thể hoàn tác.`)) return;
+    const response = await fetch(`${apiUrl}/user/${user.id}`, { method: "DELETE", headers: { authorization: `Bearer ${localStorage.getItem("greenArgricToken")}` } });
+    const result = await response.json();
+    if (!response.ok) return window.alert(result.message || "Không thể xóa tài khoản");
+    await loadUsers();
+    window.alert(result.message);
   };
   const roleStyle = (r: string) => ({
     admin: { bg: "#F0FDF4", c: "#2E7D32", l: "Quản trị viên" },
-    operator: { bg: "#EFF6FF", c: "#3B82F6", l: "Vận hành viên" },
-    viewer: { bg: "#F9FAFB", c: "#6B7280", l: "Người xem" },
+    operator: { bg: "#EFF6FF", c: "#3B82F6", l: "Chủ vườn" },
+    viewer: { bg: "#F9FAFB", c: "#6B7280", l: "Kỹ thuật viên" },
   }[r] || { bg: "#F9FAFB", c: "#6B7280", l: r });
+  const visibleUsers = users.filter(user => statusFilter === "all" || user.status === statusFilter);
 
   return (
     <div className="space-y-5">
@@ -2081,7 +2153,7 @@ function UsersScreen() {
         {[
           { l: "Tổng tài khoản", v: users.length, c: "#1F2937", bg: "white" },
           { l: "Đang hoạt động", v: users.filter(u => u.status === "active").length, c: "#2E7D32", bg: "#F0FDF4" },
-          { l: "Tạm khóa", v: users.filter(u => u.status === "inactive").length, c: "#6B7280", bg: "#F9FAFB" },
+          { l: "Bị khóa / bị cấm", v: users.filter(u => u.status !== "active").length, c: "#DC2626", bg: "#FEF2F2" },
           { l: "Quản trị viên", v: users.filter(u => u.role === "admin").length, c: "#3B82F6", bg: "#EFF6FF" },
         ].map(s => (
           <div key={s.l} className="rounded-2xl p-4 shadow-sm" style={{ background: s.bg === "white" ? "#fff" : s.bg }}>
@@ -2093,7 +2165,7 @@ function UsersScreen() {
 
       <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-          <h3 className="font-semibold text-gray-800">Danh sách tài khoản người dùng</h3>
+          <div><h3 className="font-semibold text-gray-800">Danh sách tài khoản người dùng</h3><div className="flex gap-1 mt-3 rounded-xl bg-gray-100 p-1">{(["all", "active", "locked", "inactive"] as const).map(value => <button key={value} onClick={() => setStatusFilter(value)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${statusFilter === value ? "bg-white text-green-700 shadow-sm" : "text-gray-500"}`}>{value === "all" ? `Tất cả (${users.length})` : value === "active" ? `Hoạt động (${users.filter(user => user.status === value).length})` : value === "locked" ? `Bị khóa (${users.filter(user => user.status === value).length})` : `Bị cấm (${users.filter(user => user.status === value).length})`}</button>)}</div></div>
           <button onClick={addUser} className="flex items-center gap-2 text-sm px-3 py-2 rounded-xl text-white font-semibold hover:opacity-90 transition-opacity"
             style={{ background: "#2E7D32" }}>
             <Plus size={15} /> Thêm tài khoản
@@ -2108,7 +2180,7 @@ function UsersScreen() {
             </tr>
           </thead>
           <tbody>
-            {users.map(u => {
+            {visibleUsers.map(u => {
               const role = roleStyle(u.role);
               const initials = u.name.split(" ").slice(-2).map((n: string) => n[0]).join("");
               return (
@@ -2125,20 +2197,21 @@ function UsersScreen() {
                   </td>
                   <td className="py-3 px-4 text-gray-500 text-xs">{u.dept}</td>
                   <td className="py-3 px-4">
-                    <span className={`flex items-center gap-1.5 text-xs font-semibold ${u.status === "active" ? "text-green-600" : "text-gray-400"}`}>
-                      <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${u.status === "active" ? "bg-green-500" : "bg-gray-400"}`} />
-                      {u.status === "active" ? "Hoạt động" : "Tạm khóa"}
+                    <span className={`flex items-center gap-1.5 text-xs font-semibold ${u.status === "active" ? "text-green-600" : u.status === "locked" ? "text-amber-600" : "text-red-600"}`}>
+                      <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${u.status === "active" ? "bg-green-500" : u.status === "locked" ? "bg-amber-500" : "bg-red-500"}`} />
+                      {u.status === "active" ? "Hoạt động" : u.status === "locked" ? "Bị khóa" : "Bị cấm"}
                     </span>
                   </td>
-                  <td className="py-3 px-4 text-gray-500 text-xs">{u.lastLogin}</td>
+                  <td className="py-3 px-4 text-gray-500 text-xs whitespace-nowrap" title={u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString("vi-VN") : "Tài khoản chưa từng đăng nhập"}>{formatLastLogin(u.lastLoginAt)}</td>
                   <td className="py-3 px-4">
                     <div className="flex items-center gap-1">
+                      <button onClick={() => onViewProfile({ id: u.id, full_name: u.name, email: u.email, role: u.apiRole, status: u.status })} title="Xem hồ sơ" className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-blue-50 transition-colors"><Eye size={13} className="text-blue-600" /></button>
                       <button onClick={() => void editUser(u)} title="Chỉnh sửa tài khoản" className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-gray-100 transition-colors">
                         <Edit2 size={13} className="text-gray-500" />
                       </button>
-                      <button onClick={() => void toggleUser(u)} title={u.status === "active" ? "Khóa tài khoản" : "Mở khóa tài khoản"} className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-red-50 transition-colors">
-                        <Trash2 size={13} className="text-red-400" />
-                      </button>
+                      {u.status === "active" ? <button onClick={() => void setUserStatus(u, "locked")} title="Khóa tài khoản" className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-amber-50 transition-colors"><Lock size={13} className="text-amber-500" /></button> : <button onClick={() => void setUserStatus(u, "active")} title="Mở lại tài khoản" className="h-7 px-2 rounded-lg text-[11px] font-semibold text-green-700 hover:bg-green-50 transition-colors">Mở</button>}
+                      {u.status !== "inactive" && <button onClick={() => void setUserStatus(u, "inactive")} title="Cấm tài khoản" className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-red-50 transition-colors"><X size={13} className="text-red-500" /></button>}
+                      <button onClick={() => void deleteUser(u)} title="Xóa tài khoản" className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-red-50 transition-colors"><Trash2 size={13} className="text-red-500" /></button>
                     </div>
                   </td>
                 </tr>
@@ -2367,6 +2440,9 @@ function TechDashboardView() {
 
 function TasksScreen({ role }: { role: Role }) {
   const [activeTab, setActiveTab] = useState<"schedule" | "repair" | "calibration" | "create">("schedule");
+  const [scheduleStatusFilter, setScheduleStatusFilter] = useState<"all" | "upcoming" | "due" | "overdue">("all");
+  const [repairStatusFilter, setRepairStatusFilter] = useState<"all" | "completed" | "in-progress">("all");
+  const [sensorStatusFilter, setSensorStatusFilter] = useState<"all" | "ok" | "drift" | "critical">("all");
 
   const [schedule, setSchedule] = useState([
     { id: 1, device: "Máy bơm dinh dưỡng A", zone: "Khu A", type: "Bảo trì định kỳ", date: "29/06/2026", tech: "Trần Huỳnh Đăng Khoa", status: "due" },
@@ -2395,6 +2471,7 @@ function TasksScreen({ role }: { role: Role }) {
   ]);
 
   const [newTask, setNewTask] = useState({ zone: "", device: "", type: "Bảo trì định kỳ", tech: "", date: "2026-07-05", priority: "medium", notes: "" });
+  const [permittedZones, setPermittedZones] = useState<string[] | null>(role === "admin" ? null : []);
   const setNT = (k: string, v: string) => setNewTask(f => ({ ...f, [k]: v }));
 
   const statusSt = { due: { bg: "#FEF3C7", color: "#D97706", label: "Đến hạn" }, overdue: { bg: "#FEE2E2", color: "#DC2626", label: "Quá hạn" }, upcoming: { bg: "#F0FDF4", color: "#16A34A", label: "Sắp tới" } };
@@ -2405,11 +2482,25 @@ function TasksScreen({ role }: { role: Role }) {
     { id: "repair", l: "Nhật ký sửa chữa" },
     { id: "calibration", l: "Hiệu chỉnh cảm biến" },
     { id: "create", l: "Tạo công việc" },
-  ] as const;
+  ].filter(tab => role !== "owner" || tab.id !== "create") as Array<{ id: "schedule" | "repair" | "calibration" | "create"; l: string }>;
 
-  const displaySchedule = role === "tech"
-    ? schedule.filter(s => s.tech === "Trần Huỳnh Đăng Khoa")
-    : schedule;
+  useEffect(() => {
+    const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:3000";
+    fetch(`${apiUrl}/task`, { headers: { authorization: `Bearer ${localStorage.getItem("greenArgricToken")}` } }).then(async response => {
+      if (!response.ok) throw new Error((await response.json()).message || "Không tải được lịch công việc");
+      return response.json();
+    }).then(rows => {
+      const mapped = rows.map((task: any) => ({ id: task.task_id, device: task.title, zone: task.area_name || "Chưa phân khu", type: task.description || "Bảo trì", date: new Date(task.scheduled_at).toLocaleDateString("vi-VN"), tech: task.assignee || "Chưa phân công", status: task.status === "completed" ? "upcoming" : new Date(task.scheduled_at) < new Date() ? "overdue" : "upcoming" }));
+      setSchedule(mapped);
+      if (role !== "admin") setPermittedZones([...new Set(mapped.map((task: any) => task.zone))] as string[]);
+    }).catch(() => { setSchedule([]); if (role !== "admin") setPermittedZones([]); });
+  }, [role]);
+
+  const displaySchedule = schedule.filter(item => scheduleStatusFilter === "all" || item.status === scheduleStatusFilter);
+  const scopedRepairLogs = permittedZones === null ? repairLogs : repairLogs.filter(log => permittedZones.includes(log.zone));
+  const displayRepairLogs = scopedRepairLogs.filter(log => repairStatusFilter === "all" || log.status === repairStatusFilter);
+  const scopedSensors = permittedZones === null ? sensors : sensors.filter(sensor => permittedZones.includes(sensor.zone));
+  const displaySensors = scopedSensors.filter(sensor => sensorStatusFilter === "all" || sensor.status === sensorStatusFilter);
 
   const inputCls = "w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50 transition-all bg-white";
 
@@ -2428,7 +2519,7 @@ function TasksScreen({ role }: { role: Role }) {
       {activeTab === "schedule" && (
         <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-            <h3 className="text-sm font-bold text-gray-800">Lịch công việc {role === "tech" ? "của tôi" : "toàn hệ thống"}</h3>
+            <div><h3 className="text-sm font-bold text-gray-800">Lịch công việc {role === "admin" ? "toàn hệ thống" : role === "owner" ? "của khu vực tôi quản lý" : "được giao cho tôi"}</h3><div className="flex gap-1 mt-3 rounded-xl bg-gray-100 p-1">{(["all", "upcoming", "due", "overdue"] as const).map(value => <button key={value} onClick={() => setScheduleStatusFilter(value)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${scheduleStatusFilter === value ? "bg-white text-blue-700 shadow-sm" : "text-gray-500"}`}>{value === "all" ? `Tất cả (${schedule.length})` : value === "upcoming" ? `Sắp tới (${schedule.filter(item => item.status === value).length})` : value === "due" ? `Đến hạn (${schedule.filter(item => item.status === value).length})` : `Quá hạn (${schedule.filter(item => item.status === value).length})`}</button>)}</div></div>
             <div className="flex items-center gap-2 text-xs text-gray-400">
               {schedule.filter(s => s.status === "overdue").length > 0 && (
                 <span className="px-2 py-1 rounded-full font-semibold" style={{ background: "#FEE2E2", color: "#DC2626" }}>
@@ -2457,7 +2548,7 @@ function TasksScreen({ role }: { role: Role }) {
                       <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full" style={{ background: sc.bg, color: sc.color }}>{sc.label}</span>
                     </td>
                     <td className="px-4 py-3">
-                      <button onClick={() => { const note = window.prompt("Ghi chú kết quả xử lý:", "Đã kiểm tra và hoàn thành"); if (note) { setSchedule(rows => rows.filter(item => item.id !== s.id)); window.alert(`Đã hoàn thành: ${s.device}\n${note}`); } }} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white" style={{ background: "#1D4ED8" }}>Xử lý</button>
+                      {role === "owner" ? <span className="text-xs text-gray-400">Chỉ xem</span> : <button onClick={() => { const note = window.prompt("Ghi chú kết quả xử lý:", "Đã kiểm tra và hoàn thành"); if (note) { setSchedule(rows => rows.filter(item => item.id !== s.id)); window.alert(`Đã hoàn thành: ${s.device}\n${note}`); } }} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white" style={{ background: "#1D4ED8" }}>Xử lý</button>}
                     </td>
                   </tr>
                 );
@@ -2470,13 +2561,13 @@ function TasksScreen({ role }: { role: Role }) {
       {activeTab === "repair" && (
         <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-            <h3 className="text-sm font-bold text-gray-800">Nhật ký sửa chữa</h3>
-            <button onClick={() => { const device = window.prompt("Thiết bị cần ghi nhật ký:"); if (!device) return; const issue = window.prompt("Mô tả sự cố:"); if (!issue) return; setRepairLogs(rows => [{ id: `RL-${String(30 + rows.length).padStart(3,"0")}`, date: new Date().toLocaleDateString("vi-VN"), device, zone: "Chưa chọn", issue, action: "Đang xử lý", tech: role === "tech" ? "Trần Huỳnh Đăng Khoa" : "Chưa phân công", status: "in-progress" }, ...rows]); }} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: "linear-gradient(135deg,#1D4ED8,#2563EB)" }}>
+            <div><h3 className="text-sm font-bold text-gray-800">Nhật ký sửa chữa</h3><div className="flex gap-1 mt-3 rounded-xl bg-gray-100 p-1">{(["all", "completed", "in-progress"] as const).map(value => <button key={value} onClick={() => setRepairStatusFilter(value)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${repairStatusFilter === value ? "bg-white text-blue-700 shadow-sm" : "text-gray-500"}`}>{value === "all" ? `Tất cả (${scopedRepairLogs.length})` : value === "completed" ? `Hoàn thành (${scopedRepairLogs.filter(item => item.status === value).length})` : `Đang xử lý (${scopedRepairLogs.filter(item => item.status === value).length})`}</button>)}</div></div>
+            {role !== "owner" && <button onClick={() => { const device = window.prompt("Thiết bị cần ghi nhật ký:"); if (!device) return; const issue = window.prompt("Mô tả sự cố:"); if (!issue) return; setRepairLogs(rows => [{ id: `RL-${String(30 + rows.length).padStart(3,"0")}`, date: new Date().toLocaleDateString("vi-VN"), device, zone: "Chưa chọn", issue, action: "Đang xử lý", tech: role === "tech" ? "Trần Huỳnh Đăng Khoa" : "Chưa phân công", status: "in-progress" }, ...rows]); }} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: "linear-gradient(135deg,#1D4ED8,#2563EB)" }}>
               <Plus size={14} /> Ghi nhật ký
-            </button>
+            </button>}
           </div>
           <div className="divide-y divide-gray-50">
-            {repairLogs.map(log => (
+            {displayRepairLogs.map(log => (
               <div key={log.id} className="p-5 hover:bg-gray-50 transition-colors">
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1">
@@ -2493,10 +2584,10 @@ function TasksScreen({ role }: { role: Role }) {
                     <div className="text-sm text-gray-500"><span className="font-medium text-gray-700">Xử lý:</span> {log.action}</div>
                     <div className="text-xs text-gray-400 mt-1">KTV: {log.tech}</div>
                   </div>
-                  <div className="flex items-center gap-2 flex-shrink-0">
+                  {role !== "owner" && <div className="flex items-center gap-2 flex-shrink-0">
                     <button onClick={() => { const action = window.prompt("Cập nhật cách xử lý:", log.action); if (action) setRepairLogs(rows => rows.map(item => item.id === log.id ? { ...item, action, status: "completed" } : item)); }} title="Cập nhật nhật ký" className="p-1.5 rounded-lg hover:bg-blue-50"><Edit2 size={14} className="text-gray-400" /></button>
                     <button onClick={() => { if (window.confirm(`Xóa nhật ký ${log.id}?`)) setRepairLogs(rows => rows.filter(item => item.id !== log.id)); }} title="Xóa nhật ký" className="p-1.5 rounded-lg hover:bg-red-50"><Trash2 size={14} className="text-gray-400" /></button>
-                  </div>
+                  </div>}
                 </div>
               </div>
             ))}
@@ -2506,6 +2597,7 @@ function TasksScreen({ role }: { role: Role }) {
 
       {activeTab === "calibration" && (
         <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+          <div className="px-5 py-4 border-b"><h3 className="text-sm font-bold text-gray-800">Tình trạng hiệu chỉnh</h3><div className="inline-flex gap-1 mt-3 rounded-xl bg-gray-100 p-1">{(["all", "ok", "drift", "critical"] as const).map(value => <button key={value} onClick={() => setSensorStatusFilter(value)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${sensorStatusFilter === value ? "bg-white text-blue-700 shadow-sm" : "text-gray-500"}`}>{value === "all" ? `Tất cả (${scopedSensors.length})` : value === "ok" ? `Đạt chuẩn (${scopedSensors.filter(item => item.status === value).length})` : value === "drift" ? `Lệch nhẹ (${scopedSensors.filter(item => item.status === value).length})` : `Lệch nhiều (${scopedSensors.filter(item => item.status === value).length})`}</button>)}</div></div>
           <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
             <h3 className="text-sm font-bold text-gray-800">Hiệu chỉnh cảm biến</h3>
             <button className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: "linear-gradient(135deg,#1D4ED8,#2563EB)" }}>
@@ -2519,7 +2611,7 @@ function TasksScreen({ role }: { role: Role }) {
               ))}
             </tr></thead>
             <tbody>
-              {sensors.map(s => {
+              {displaySensors.map(s => {
                 const sc = calSt[s.status as keyof typeof calSt];
                 return (
                   <tr key={s.id} className="border-t border-gray-50 hover:bg-gray-50">
@@ -2534,8 +2626,8 @@ function TasksScreen({ role }: { role: Role }) {
                     <td className="px-4 py-3 text-xs text-gray-400">{s.lastCal}</td>
                     <td className="px-4 py-3"><span className="text-[11px] font-semibold px-2.5 py-1 rounded-full" style={{ background: sc.bg, color: sc.color }}>{sc.label}</span></td>
                     <td className="px-4 py-3">
-                      <button onClick={() => { if (s.status === "ok") window.alert(`${s.name} đang đạt chuẩn. Sai lệch: ${s.drift}${s.unit}`); else { const value = window.prompt("Nhập giá trị sau hiệu chỉnh:", String(s.standard)); if (value != null && Number.isFinite(Number(value))) setSensors(rows => rows.map(item => item.id === s.id ? { ...item, current: Number(value), drift: Number((Number(value) - item.standard).toFixed(2)), status: "ok", lastCal: new Date().toLocaleDateString("vi-VN") } : item)); } }} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white" style={{ background: s.status === "ok" ? "#6B7280" : "#1D4ED8" }}>
-                        {s.status === "ok" ? "Chi tiết" : "Hiệu chỉnh"}
+                      <button onClick={() => { if (role === "owner" || s.status === "ok") window.alert(`${s.name} đang ${s.status === "ok" ? "đạt chuẩn" : "cần hiệu chỉnh"}. Sai lệch: ${s.drift}${s.unit}`); else { const value = window.prompt("Nhập giá trị sau hiệu chỉnh:", String(s.standard)); if (value != null && Number.isFinite(Number(value))) setSensors(rows => rows.map(item => item.id === s.id ? { ...item, current: Number(value), drift: Number((Number(value) - item.standard).toFixed(2)), status: "ok", lastCal: new Date().toLocaleDateString("vi-VN") } : item)); } }} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white" style={{ background: role === "owner" || s.status === "ok" ? "#6B7280" : "#1D4ED8" }}>
+                        {role === "owner" || s.status === "ok" ? "Chi tiết" : "Hiệu chỉnh"}
                       </button>
                     </td>
                   </tr>
@@ -3137,6 +3229,9 @@ function AdminDashboardView() {
 
 function DeviceTechView() {
   const [activeTab, setActiveTab] = useState<"overview" | "maintenance" | "calibration">("overview");
+  const [deviceStatusFilter, setDeviceStatusFilter] = useState<"all" | "on" | "off">("all");
+  const [maintenanceStatusFilter, setMaintenanceStatusFilter] = useState<"all" | "upcoming" | "due" | "overdue">("all");
+  const [calibrationStatusFilter, setCalibrationStatusFilter] = useState<"all" | "ok" | "drift" | "critical">("all");
   const schedule = [
     { id: 1, device: "Máy bơm dinh dưỡng A", zone: "Khu A", type: "Bảo trì định kỳ", nextDate: "29/06/2026", interval: "30 ngày", status: "due", tech: "Trần Huỳnh Đăng Khoa" },
     { id: 2, device: "Máy bơm tưới B", zone: "Khu B", type: "Thay bộ lọc", nextDate: "02/07/2026", interval: "45 ngày", status: "upcoming", tech: "Trần Huỳnh Đăng Khoa" },
@@ -3167,8 +3262,10 @@ function DeviceTechView() {
       </div>
 
       {activeTab === "overview" && (
-        <div className="grid grid-cols-2 gap-4">
-          {DEVICES_INIT.map(d => (
+        <div className="space-y-4">
+          <div className="inline-flex gap-1 rounded-xl bg-gray-100 p-1">{(["all", "on", "off"] as const).map(value => <button key={value} onClick={() => setDeviceStatusFilter(value)} className={`px-4 py-2 rounded-lg text-sm font-semibold ${deviceStatusFilter === value ? "bg-white text-blue-700 shadow-sm" : "text-gray-500"}`}>{value === "all" ? `Tất cả (${DEVICES_INIT.length})` : value === "on" ? `Đang hoạt động (${DEVICES_INIT.filter(device => device.on).length})` : `Đang tắt (${DEVICES_INIT.filter(device => !device.on).length})`}</button>)}</div>
+          <div className="grid grid-cols-2 gap-4">
+          {DEVICES_INIT.filter(device => deviceStatusFilter === "all" || (deviceStatusFilter === "on" ? device.on : !device.on)).map(d => (
             <div key={d.id} className="bg-white rounded-2xl p-4 shadow-sm flex items-center gap-4">
               <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: d.on ? "#EFF6FF" : "#F9FAFB" }}>
                 <Zap size={18} style={{ color: d.on ? "#1D4ED8" : "#9CA3AF" }} />
@@ -3183,11 +3280,13 @@ function DeviceTechView() {
               </span>
             </div>
           ))}
+          </div>
         </div>
       )}
 
       {activeTab === "maintenance" && (
         <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+          <div className="px-5 py-4 border-b"><div className="inline-flex gap-1 rounded-xl bg-gray-100 p-1">{(["all", "upcoming", "due", "overdue"] as const).map(value => <button key={value} onClick={() => setMaintenanceStatusFilter(value)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${maintenanceStatusFilter === value ? "bg-white text-blue-700 shadow-sm" : "text-gray-500"}`}>{value === "all" ? `Tất cả (${schedule.length})` : value === "upcoming" ? `Sắp tới (${schedule.filter(item => item.status === value).length})` : value === "due" ? `Đến hạn (${schedule.filter(item => item.status === value).length})` : `Quá hạn (${schedule.filter(item => item.status === value).length})`}</button>)}</div></div>
           <table className="w-full text-sm">
             <thead><tr style={{ background: "#F9FAFB" }}>
               {["Thiết bị", "Khu vực", "Loại bảo trì", "Ngày tiếp theo", "Chu kỳ", "Trạng thái"].map(h => (
@@ -3195,7 +3294,7 @@ function DeviceTechView() {
               ))}
             </tr></thead>
             <tbody>
-              {schedule.map(s => {
+              {schedule.filter(item => maintenanceStatusFilter === "all" || item.status === maintenanceStatusFilter).map(s => {
                 const sc = statusCfg[s.status as keyof typeof statusCfg];
                 return (
                   <tr key={s.id} className="border-t border-gray-50 hover:bg-gray-50">
@@ -3217,6 +3316,7 @@ function DeviceTechView() {
 
       {activeTab === "calibration" && (
         <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+          <div className="px-5 py-4 border-b"><div className="inline-flex gap-1 rounded-xl bg-gray-100 p-1">{(["all", "ok", "drift", "critical"] as const).map(value => <button key={value} onClick={() => setCalibrationStatusFilter(value)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${calibrationStatusFilter === value ? "bg-white text-blue-700 shadow-sm" : "text-gray-500"}`}>{value === "all" ? `Tất cả (${sensors.length})` : value === "ok" ? `Đạt chuẩn (${sensors.filter(item => item.status === value).length})` : value === "drift" ? `Lệch nhẹ (${sensors.filter(item => item.status === value).length})` : `Lệch nhiều (${sensors.filter(item => item.status === value).length})`}</button>)}</div></div>
           <table className="w-full text-sm">
             <thead><tr style={{ background: "#F9FAFB" }}>
               {["Cảm biến", "Khu vực", "Loại", "Giá trị hiện tại", "Giá trị chuẩn", "Sai lệch", "Hiệu chỉnh cuối", "Tình trạng", ""].map(h => (
@@ -3224,7 +3324,7 @@ function DeviceTechView() {
               ))}
             </tr></thead>
             <tbody>
-              {sensors.map(s => {
+              {sensors.filter(item => calibrationStatusFilter === "all" || item.status === calibrationStatusFilter).map(s => {
                 const sc = calSt[s.status as keyof typeof calSt];
                 return (
                   <tr key={s.id} className="border-t border-gray-50 hover:bg-gray-50">
@@ -3259,11 +3359,13 @@ function DeviceTechView() {
 function DeviceManagementView() {
   const [devices, setDevices] = useState(DEVICES_INIT.map(d => ({ ...d, firmware: "v2.1.4", ip: `192.168.1.${10 + d.id}`, signal: Math.floor(75 + Math.random() * 20) })));
   const [filter, setFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "on" | "off">("all");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
 
   const filtered = devices.filter(d =>
     (filter === "all" || d.type === filter) &&
+    (statusFilter === "all" || (statusFilter === "on" ? d.on : !d.on)) &&
     (d.name.toLowerCase().includes(search.toLowerCase()) || d.zone.toLowerCase().includes(search.toLowerCase()))
   );
 
@@ -3282,7 +3384,14 @@ function DeviceManagementView() {
     fan: devices.filter(d => d.type === "fan").length,
     dosing: devices.filter(d => d.type === "dosing").length,
   };
-  const pagedDevices = filtered.slice((page - 1) * 8, page * 8);
+  const pageSize = 8;
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const firstVisible = filtered.length === 0 ? 0 : (safePage - 1) * pageSize + 1;
+  const lastVisible = Math.min(safePage * pageSize, filtered.length);
+  const pagedDevices = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
+  useEffect(() => { setPage(1); }, [filter, statusFilter, search]);
+  useEffect(() => { if (page > totalPages) setPage(totalPages); }, [page, totalPages]);
   const addLocalDevice = () => { const name = window.prompt("Tên thiết bị:"); if (!name) return; const zone = window.prompt("Khu vực:", "Khu A") || "Khu A"; const type = window.prompt("Loại: pump, light, fan hoặc dosing", "pump") || "pump"; const id = Math.max(0, ...devices.map(item => item.id)) + 1; setDevices(rows => [...rows, { id, name, zone, type, on: false, mode: "manual", watt: 50, lastRun: "Chưa chạy", firmware: "v2.1.4", ip: `192.168.1.${10 + id}`, signal: 100 }]); };
   const editLocalDevice = (device: any) => { const name = window.prompt("Tên thiết bị:", device.name); if (!name) return; const zone = window.prompt("Khu vực:", device.zone); if (!zone) return; setDevices(rows => rows.map(item => item.id === device.id ? { ...item, name, zone } : item)); };
 
@@ -3310,7 +3419,7 @@ function DeviceManagementView() {
 
       {/* Toolbar */}
       <div className="bg-white rounded-2xl p-4 shadow-sm flex items-center justify-between gap-4">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {(["all", "pump", "light", "fan", "dosing"] as const).map(t => (
             <button key={t} onClick={() => setFilter(t)}
               className="px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
@@ -3320,6 +3429,8 @@ function DeviceManagementView() {
               {t === "all" ? `Tất cả (${counts.all})` : t === "pump" ? `Máy bơm (${counts.pump})` : t === "light" ? `Đèn LED (${counts.light})` : t === "fan" ? `Quạt (${counts.fan})` : `Bơm châm (${counts.dosing})`}
             </button>
           ))}
+          <span className="h-6 w-px bg-gray-200 mx-1" />
+          {(["all", "on", "off"] as const).map(value => <button key={`status-${value}`} onClick={() => setStatusFilter(value)} className="px-3 py-1.5 rounded-xl text-xs font-semibold transition-all" style={statusFilter === value ? { background: "#166534", color: "#fff" } : { background: "#ECFDF5", color: "#166534" }}>{value === "all" ? `Mọi trạng thái (${devices.length})` : value === "on" ? `Đang hoạt động (${devices.filter(device => device.on).length})` : `Đang tắt (${devices.filter(device => !device.on).length})`}</button>)}
         </div>
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2 w-52">
@@ -3390,12 +3501,14 @@ function DeviceManagementView() {
           </table>
         </div>
         <div className="px-4 py-3 border-t border-gray-100 flex items-center justify-between">
-          <span className="text-xs text-gray-400">Hiển thị {filtered.length}/{devices.length} thiết bị</span>
+          <span className="text-xs text-gray-400">Hiển thị {firstVisible}-{lastVisible} trong {filtered.length} thiết bị phù hợp · Tổng hệ thống {devices.length}</span>
           <div className="flex items-center gap-1">
-            {[1, 2].map(p => (
+            <button onClick={() => setPage(Math.max(1, safePage - 1))} disabled={safePage === 1} className="w-7 h-7 rounded-lg text-xs font-semibold bg-gray-100 text-gray-500 disabled:opacity-40" title="Trang trước"><ChevronLeft size={14} className="mx-auto"/></button>
+            {Array.from({ length: totalPages }, (_, index) => index + 1).map(p => (
               <button key={p} onClick={() => setPage(p)} className="w-7 h-7 rounded-lg text-xs font-semibold transition-all"
-                style={p === page ? { background: "#2E7D32", color: "#fff" } : { background: "#F3F4F6", color: "#6B7280" }}>{p}</button>
+                style={p === safePage ? { background: "#2E7D32", color: "#fff" } : { background: "#F3F4F6", color: "#6B7280" }}>{p}</button>
             ))}
+            <button onClick={() => setPage(Math.min(totalPages, safePage + 1))} disabled={safePage === totalPages} className="w-7 h-7 rounded-lg text-xs font-semibold bg-gray-100 text-gray-500 disabled:opacity-40" title="Trang sau"><ChevronRight size={14} className="mx-auto"/></button>
           </div>
         </div>
       </div>
@@ -3542,6 +3655,51 @@ function OwnerNotificationsScreen() {
 
 // ── Screen: Owner Profile ──────────────────────────────────────────────────
 
+function OwnProfileMedia({ name, initial }: { name: string; initial: string }) {
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const coverInputRef = useRef<HTMLInputElement>(null);
+  const [avatarUrl, setAvatarUrl] = useState("");
+  const [coverUrl, setCoverUrl] = useState("");
+  let userId = 0;
+  try { userId = Number(JSON.parse(localStorage.getItem("greenArgricUser") || "null")?.id || 0); } catch { userId = 0; }
+  useEffect(() => {
+    if (!userId) return;
+    setAvatarUrl(localStorage.getItem(`greenArgricProfileAvatar:${userId}`) || "");
+    setCoverUrl(localStorage.getItem(`greenArgricProfileCover:${userId}`) || "");
+  }, [userId]);
+  const uploadImage = (file: File | undefined, kind: "avatar" | "cover") => {
+    if (!file || !userId) return;
+    if (!file.type.startsWith("image/")) return window.alert("Vui lòng chọn một tệp hình ảnh.");
+    const maxBytes = kind === "avatar" ? 1024 * 1024 : 3 * 1024 * 1024;
+    if (file.size > maxBytes) return window.alert(kind === "avatar" ? "Ảnh đại diện tối đa 1 MB." : "Ảnh bìa tối đa 3 MB.");
+    const reader = new FileReader();
+    reader.onload = () => {
+      const value = String(reader.result || "");
+      try {
+        localStorage.setItem(`greenArgricProfile${kind === "avatar" ? "Avatar" : "Cover"}:${userId}`, value);
+        if (kind === "avatar") setAvatarUrl(value); else setCoverUrl(value);
+      } catch { window.alert("Không đủ dung lượng lưu ảnh. Hãy chọn ảnh có kích thước nhỏ hơn."); }
+    };
+    reader.readAsDataURL(file);
+  };
+  return <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+    <div className="h-36 bg-gradient-to-r from-green-900 to-green-600 relative overflow-hidden">
+      {coverUrl && <img src={coverUrl} alt={`Ảnh bìa của ${name}`} className="absolute inset-0 w-full h-full object-cover" />}
+      <div className="absolute inset-0 bg-gradient-to-r from-green-950/35 to-green-700/10" />
+      <button onClick={() => coverInputRef.current?.click()} className="absolute right-5 top-5 px-3 py-2 rounded-xl bg-white/90 text-gray-700 text-xs font-semibold flex items-center gap-1.5 shadow hover:bg-white"><Edit2 size={14}/>Đổi ảnh bìa</button>
+      <input ref={coverInputRef} type="file" accept="image/*" className="hidden" onChange={event => { uploadImage(event.target.files?.[0], "cover"); event.target.value = ""; }} />
+    </div>
+    <div className="px-6 pb-5 flex items-end gap-4">
+      <div className="relative -mt-10 flex-shrink-0">
+        <div className="w-20 h-20 rounded-2xl border-4 border-white bg-green-700 text-white grid place-items-center text-2xl font-bold shadow overflow-hidden">{avatarUrl ? <img src={avatarUrl} alt={`Ảnh đại diện của ${name}`} className="w-full h-full object-cover" /> : initial}</div>
+        <button onClick={() => avatarInputRef.current?.click()} title="Đổi ảnh đại diện" className="absolute -right-2 -bottom-2 w-8 h-8 rounded-full bg-white border border-gray-200 text-green-700 shadow grid place-items-center hover:bg-green-50"><Edit2 size={14}/></button>
+        <input ref={avatarInputRef} type="file" accept="image/*" className="hidden" onChange={event => { uploadImage(event.target.files?.[0], "avatar"); event.target.value = ""; }} />
+      </div>
+      <div className="pt-3"><div className="font-bold text-gray-800">Ảnh hồ sơ của bạn</div><div className="text-xs text-gray-500 mt-1">Chỉ bạn mới có thể thay đổi ảnh đại diện và ảnh bìa này.</div></div>
+    </div>
+  </div>;
+}
+
 function OwnerProfileScreen() {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({
@@ -3570,6 +3728,7 @@ function OwnerProfileScreen() {
 
   return (
     <div className="max-w-2xl space-y-5">
+      <OwnProfileMedia name={form.name} initial="Q" />
       {/* Avatar + stats */}
       <div className="bg-white rounded-2xl p-6 shadow-sm">
         <div className="flex items-center gap-5 mb-6">
@@ -3861,6 +4020,7 @@ function RoleProfileScreen({ data }: { data: ProfileData }) {
 
   return (
     <div className="max-w-2xl space-y-5">
+      <OwnProfileMedia name={form.name} initial={data.initial} />
       <div className="bg-white rounded-2xl p-6 shadow-sm">
         <div className="flex items-center gap-5 mb-6">
           <div className="w-20 h-20 rounded-2xl flex items-center justify-center text-white text-3xl font-extrabold flex-shrink-0"
@@ -4712,11 +4872,48 @@ function LogoScreen() {
   );
 }
 
+function UserDirectoryProfile({ user, onMessage }: { user: any; onMessage: (user: any) => void }) {
+  const [avatarUrl, setAvatarUrl] = useState("");
+  const [coverUrl, setCoverUrl] = useState("");
+  useEffect(() => {
+    if (!user?.id) return;
+    setAvatarUrl(localStorage.getItem(`greenArgricProfileAvatar:${user.id}`) || "");
+    setCoverUrl(localStorage.getItem(`greenArgricProfileCover:${user.id}`) || "");
+  }, [user?.id]);
+  if (!user) return <div className="bg-white rounded-2xl p-10 text-center text-gray-500">Chưa chọn tài khoản để xem hồ sơ.</div>;
+  const roleLabel = user.role === "owner" ? "Chủ vườn" : user.role === "admin" ? "Quản trị viên" : "Kỹ thuật viên";
+  const initials = String(user.full_name || "?").split(" ").slice(-2).map((part: string) => part[0]).join("").toUpperCase();
+  return <div className="max-w-3xl mx-auto bg-white rounded-2xl shadow-sm overflow-hidden">
+    <div className="h-44 bg-gradient-to-r from-green-900 to-green-600 relative overflow-hidden">
+      {coverUrl && <img src={coverUrl} alt={`Ảnh bìa của ${user.full_name}`} className="absolute inset-0 w-full h-full object-cover" />}
+      <div className="absolute inset-0 bg-gradient-to-r from-green-950/35 to-green-700/10" />
+    </div>
+    <div className="px-8 pb-8">
+      <div className="flex items-start justify-between gap-5">
+        <div className="flex items-start gap-4 min-w-0">
+          <div className="relative -mt-12 flex-shrink-0">
+            <div className="w-24 h-24 rounded-2xl border-4 border-white bg-green-700 text-white grid place-items-center text-2xl font-bold shadow overflow-hidden">{avatarUrl ? <img src={avatarUrl} alt={`Ảnh đại diện của ${user.full_name}`} className="w-full h-full object-cover" /> : initials}</div>
+          </div>
+          <div className="pt-4 min-w-0"><h2 className="text-2xl font-bold text-gray-800 truncate">{user.full_name}</h2><p className="text-sm text-green-700 font-semibold mt-1">{roleLabel}</p></div>
+        </div>
+        <button onClick={() => onMessage(user)} className="mt-4 px-5 py-2.5 rounded-xl bg-green-700 text-white text-sm font-semibold flex items-center gap-2 hover:bg-green-800 flex-shrink-0"><MessageCircle size={16}/>Nhắn tin</button>
+      </div>
+      <div className="grid grid-cols-2 gap-4 mt-8">
+        <div className="p-4 rounded-xl bg-gray-50"><div className="text-xs text-gray-400 mb-1">Email</div><div className="text-sm font-semibold text-gray-700">{user.email || "Chưa cập nhật"}</div></div>
+        <div className="p-4 rounded-xl bg-gray-50"><div className="text-xs text-gray-400 mb-1">Trạng thái</div><div className="text-sm font-semibold text-green-700">{user.status === "active" ? "Đang hoạt động" : "Không hoạt động"}</div></div>
+        <div className="p-4 rounded-xl bg-gray-50"><div className="text-xs text-gray-400 mb-1">Vai trò trong hệ thống</div><div className="text-sm font-semibold text-gray-700">{roleLabel}</div></div>
+        <div className="p-4 rounded-xl bg-gray-50"><div className="text-xs text-gray-400 mb-1">Mã tài khoản</div><div className="text-sm font-semibold text-gray-700">#{user.id}</div></div>
+      </div>
+      <div className="mt-5 p-4 rounded-xl border border-green-100 bg-green-50 text-sm text-green-800">Đây là hồ sơ thành viên trong hệ thống GREEN ARGRIC khép kín. Bạn có thể liên hệ trực tiếp bằng nút Nhắn tin.</div>
+    </div>
+  </div>;
+}
+
 function MessageText({ text }: { text: string }) {
   return <div className="whitespace-pre-wrap leading-6 [word-spacing:0.04em]">{String(text).split(/(https?:\/\/[^\s]+)/g).map((part, index) => /^https?:\/\//.test(part) ? <a key={index} href={part} target="_blank" rel="noreferrer" className="inline-block underline font-semibold">Mở bài viết tham khảo</a> : <span key={index}>{part}</span>)}</div>;
 }
 
-function MessagesScreen() {
+function MessagesScreen({ initialContactId, onViewProfile }: { initialContactId?: number | null; onViewProfile: (user: any) => void }) {
   const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:3000";
   const headers = () => ({ "content-type": "application/json", authorization: `Bearer ${localStorage.getItem("greenArgricToken")}` });
   let myId = 0; try { const payload = (localStorage.getItem("greenArgricToken") || "..").split(".")[1].replace(/-/g, "+").replace(/_/g, "/"); myId = Number(JSON.parse(atob(payload.padEnd(Math.ceil(payload.length / 4) * 4, "=")))?.id || 0); } catch { myId = 0; }
@@ -4726,7 +4923,7 @@ function MessagesScreen() {
   const messageListRef = useRef<HTMLDivElement>(null);
   const updateAiItems = (updater: (rows: any[]) => any[]) => setItems(rows => { const next = updater(rows); localStorage.setItem(aiStorageKey, JSON.stringify(next)); return next; });
   const loadConversation = async (contact: any) => { setSelected(contact); const response = await fetch(`${apiUrl}/message/conversation/${contact.id}`, { headers: headers() }); if (response.ok) setItems(await response.json()); };
-  useEffect(() => { fetch(`${apiUrl}/message/contacts`, { headers: headers() }).then(r => r.ok ? r.json() : []).then(rows => { setContacts(rows); if (rows[0]) void loadConversation(rows[0]); }); }, []);
+  useEffect(() => { fetch(`${apiUrl}/message/contacts`, { headers: headers() }).then(r => r.ok ? r.json() : []).then(rows => { setContacts(rows); const target = rows.find((contact: any) => contact.id === initialContactId) || rows[0]; if (target) void loadConversation(target); }); }, [initialContactId]);
   useEffect(() => { if (mode !== "people" || !selected) return; const timer = window.setInterval(() => void loadConversation(selected), 3000); return () => window.clearInterval(timer); }, [mode, selected?.id]);
   useEffect(() => { messageListRef.current?.scrollTo({ top: messageListRef.current.scrollHeight, behavior: "smooth" }); }, [items, loading]);
   useEffect(() => {
@@ -4752,7 +4949,7 @@ function MessagesScreen() {
     if (mode === "ai") { updateAiItems(rows => [...rows, { sender_id: myId, content, created_at: new Date().toISOString() }]); const history = items.filter(item => !(item.sender_id === -1 && item.content === aiGreeting.content)).slice(-4).map(item => ({ role: item.sender_id === myId ? "user" : "assistant", content: item.content })); const response = await fetch(`${apiUrl}/ai/chat`, { method: "POST", headers: headers(), body: JSON.stringify({ message: content, history }) }); const result = await response.json(); const errorText = result.code === "AI_NOT_CONFIGURED" ? `${result.message}. Hãy cấu hình OPENAI_API_KEY trong backend/.env.` : result.message || "Dịch vụ AI hiện không phản hồi."; updateAiItems(rows => [...rows, { sender_id: -1, content: response.ok ? result.reply : errorText, created_at: new Date().toISOString() }]); }
     else if (selected) { const response = await fetch(`${apiUrl}/message`, { method: "POST", headers: headers(), body: JSON.stringify({ receiver_id: selected.id, content }) }); const result = await response.json(); if (response.ok) setItems(rows => [...rows, result]); else window.alert(result.message); }
     setLoading(false); };
-  return <div className="grid grid-cols-[300px_1fr] bg-white rounded-2xl shadow-sm overflow-hidden min-h-[680px]"><aside className="border-r border-gray-100"><div className="p-4 grid grid-cols-2 gap-2 border-b"><button onClick={() => changeMode("people")} className={`py-2 rounded-xl text-xs font-bold ${mode === "people" ? "bg-green-700 text-white" : "bg-gray-50 text-gray-500"}`}>Mọi người</button><button onClick={() => changeMode("ai")} className={`py-2 rounded-xl text-xs font-bold ${mode === "ai" ? "bg-green-700 text-white" : "bg-gray-50 text-gray-500"}`}>Trợ lý AI</button></div>{mode === "people" ? <div className="p-2 space-y-1">{contacts.map(contact => <button key={contact.id} onClick={() => void loadConversation(contact)} className={`w-full text-left p-3 rounded-xl ${selected?.id === contact.id ? "bg-green-50" : "hover:bg-gray-50"}`}><div className="text-sm font-semibold text-gray-800">{contact.full_name}</div><div className="text-xs text-gray-400">{contact.role === "owner" ? "Chủ vườn" : contact.role === "admin" ? "Quản trị viên" : "Kỹ thuật viên"}</div></button>)}</div> : <div className="p-5 text-sm text-gray-500"><Bot size={28} className="text-green-700 mb-3"/><b className="block text-gray-800 mb-1">AI GREEN ARGRIC</b>Lịch sử được lưu riêng cho tài khoản này trên trình duyệt.</div>}</aside><section className="flex flex-col min-w-0"><div className="h-16 px-5 border-b flex items-center justify-between"><div><div className="font-bold text-gray-800">{mode === "ai" ? "Trợ lý AI" : selected?.full_name || "Chọn người nhận"}</div><div className="text-xs text-green-600">{mode === "ai" ? "Trợ lý thông minh GREEN ARGRIC" : "Nhắn tin hai chiều · tự cập nhật mỗi 3 giây"}</div></div><div className="flex gap-2">{mode === "people" && selected && <button onClick={() => void loadConversation(selected)} className="text-xs px-3 py-2 rounded-lg bg-green-50 text-green-700 font-semibold">Làm mới</button>}<button onClick={() => void clearConversation()} disabled={mode === "people" && !selected} className="text-xs px-3 py-2 rounded-lg bg-red-50 text-red-600 font-semibold flex items-center gap-1 disabled:opacity-40"><Trash2 size={14}/>Xóa cuộc trò chuyện</button></div></div><div ref={messageListRef} className="flex-1 overflow-auto p-5 space-y-3 bg-gray-50/50">{items.map((item, index) => <div key={item.message_id || index} className={`max-w-[70%] rounded-2xl px-4 py-3 text-sm ${item.sender_id === myId ? "ml-auto bg-green-700 text-white" : "bg-white border text-gray-700"}`}><MessageText text={item.content}/></div>)}{loading && mode === "ai" && <div className="max-w-[70%] rounded-2xl px-4 py-3 bg-white border border-green-100 text-gray-600 shadow-sm"><div className="flex items-center gap-2 text-sm font-medium"><Bot size={16} className="text-green-700 animate-pulse"/><span>{generationMessages[generationStage]}</span><span className="flex items-center gap-1" aria-label="Đang xử lý"><i className="w-1.5 h-1.5 rounded-full bg-green-600 animate-bounce"/><i className="w-1.5 h-1.5 rounded-full bg-green-600 animate-bounce [animation-delay:150ms]"/><i className="w-1.5 h-1.5 rounded-full bg-green-600 animate-bounce [animation-delay:300ms]"/></span></div><div className="mt-2 h-1 overflow-hidden rounded-full bg-green-50"><div className="h-full w-1/2 rounded-full bg-green-600 animate-pulse"/></div></div>}</div><div className="p-4 border-t flex gap-3"><input value={text} onChange={e => setText(e.target.value)} onKeyDown={e => e.key === "Enter" && void send()} disabled={loading} className="flex-1 border rounded-xl px-4 outline-none focus:border-green-500 disabled:bg-gray-50" placeholder={loading && mode === "ai" ? "Trợ lý đang tạo câu trả lời..." : "Nhập tin nhắn..."}/><button onClick={() => void send()} disabled={loading} className="px-5 rounded-xl bg-green-700 text-white font-semibold flex items-center gap-2 disabled:opacity-60"><Send size={16}/>{loading && mode === "ai" ? "Đang xử lý..." : loading ? "Đang gửi" : "Gửi"}</button></div></section></div>;
+  return <div className="grid grid-cols-[300px_1fr] bg-white rounded-2xl shadow-sm overflow-hidden min-h-[680px]"><aside className="border-r border-gray-100"><div className="p-4 grid grid-cols-2 gap-2 border-b"><button onClick={() => changeMode("people")} className={`py-2 rounded-xl text-xs font-bold ${mode === "people" ? "bg-green-700 text-white" : "bg-gray-50 text-gray-500"}`}>Mọi người</button><button onClick={() => changeMode("ai")} className={`py-2 rounded-xl text-xs font-bold ${mode === "ai" ? "bg-green-700 text-white" : "bg-gray-50 text-gray-500"}`}>Trợ lý AI</button></div>{mode === "people" ? <div className="p-2 space-y-1">{contacts.map(contact => <button key={contact.id} onClick={() => void loadConversation(contact)} className={`w-full text-left p-3 rounded-xl ${selected?.id === contact.id ? "bg-green-50" : "hover:bg-gray-50"}`}><div className="text-sm font-semibold text-gray-800">{contact.full_name}</div><div className="text-xs text-gray-400">{contact.role === "owner" ? "Chủ vườn" : contact.role === "admin" ? "Quản trị viên" : "Kỹ thuật viên"}</div></button>)}</div> : <div className="p-5 text-sm text-gray-500"><Bot size={28} className="text-green-700 mb-3"/><b className="block text-gray-800 mb-1">AI GREEN ARGRIC</b>Lịch sử được lưu riêng cho tài khoản này trên trình duyệt.</div>}</aside><section className="flex flex-col min-w-0"><div className="h-16 px-5 border-b flex items-center justify-between"><div><div className="font-bold text-gray-800">{mode === "ai" ? "Trợ lý AI" : selected?.full_name || "Chọn người nhận"}</div><div className="text-xs text-green-600">{mode === "ai" ? "Trợ lý thông minh GREEN ARGRIC" : "Nhắn tin hai chiều · tự cập nhật mỗi 3 giây"}</div></div><div className="flex gap-2">{mode === "people" && selected && <button onClick={() => onViewProfile(selected)} className="text-xs px-3 py-2 rounded-lg bg-blue-50 text-blue-700 font-semibold flex items-center gap-1"><Eye size={14}/>Xem hồ sơ</button>}{mode === "people" && selected && <button onClick={() => void loadConversation(selected)} className="text-xs px-3 py-2 rounded-lg bg-green-50 text-green-700 font-semibold">Làm mới</button>}<button onClick={() => void clearConversation()} disabled={mode === "people" && !selected} className="text-xs px-3 py-2 rounded-lg bg-red-50 text-red-600 font-semibold flex items-center gap-1 disabled:opacity-40"><Trash2 size={14}/>Xóa cuộc trò chuyện</button></div></div><div ref={messageListRef} className="flex-1 overflow-auto p-5 space-y-3 bg-gray-50/50">{items.map((item, index) => <div key={item.message_id || index} className={`max-w-[70%] rounded-2xl px-4 py-3 text-sm ${item.sender_id === myId ? "ml-auto bg-green-700 text-white" : "bg-white border text-gray-700"}`}><MessageText text={item.content}/></div>)}{loading && mode === "ai" && <div className="max-w-[70%] rounded-2xl px-4 py-3 bg-white border border-green-100 text-gray-600 shadow-sm"><div className="flex items-center gap-2 text-sm font-medium"><Bot size={16} className="text-green-700 animate-pulse"/><span>{generationMessages[generationStage]}</span><span className="flex items-center gap-1" aria-label="Đang xử lý"><i className="w-1.5 h-1.5 rounded-full bg-green-600 animate-bounce"/><i className="w-1.5 h-1.5 rounded-full bg-green-600 animate-bounce [animation-delay:150ms]"/><i className="w-1.5 h-1.5 rounded-full bg-green-600 animate-bounce [animation-delay:300ms]"/></span></div><div className="mt-2 h-1 overflow-hidden rounded-full bg-green-50"><div className="h-full w-1/2 rounded-full bg-green-600 animate-pulse"/></div></div>}</div><div className="p-4 border-t flex gap-3"><input value={text} onChange={e => setText(e.target.value)} onKeyDown={e => e.key === "Enter" && void send()} disabled={loading} className="flex-1 border rounded-xl px-4 outline-none focus:border-green-500 disabled:bg-gray-50" placeholder={loading && mode === "ai" ? "Trợ lý đang tạo câu trả lời..." : "Nhập tin nhắn..."}/><button onClick={() => void send()} disabled={loading} className="px-5 rounded-xl bg-green-700 text-white font-semibold flex items-center gap-2 disabled:opacity-60"><Send size={16}/>{loading && mode === "ai" ? "Đang xử lý..." : loading ? "Đang gửi" : "Gửi"}</button></div></section></div>;
 }
 
 function HelpScreen({ role, onNavigate }: { role: Role; onNavigate: (screen: Screen) => void }) {
@@ -4786,6 +4983,8 @@ export default function App() {
   const [role, setRole] = useState<Role | null>(
     urlScreen && urlRole ? urlRole : null
   );
+  const [viewedUser, setViewedUser] = useState<any>(null);
+  const [messageTargetId, setMessageTargetId] = useState<number | null>(null);
 
   const handleLogin = async (selectedRole: Role, username: string, password: string) => {
     const apiRole = selectedRole === "tech" ? "technician" : selectedRole;
@@ -4866,7 +5065,7 @@ export default function App() {
     <div className="flex min-h-screen bg-[#F7FAF7]">
       <Sidebar active={screen} role={role} onNavigate={setScreen} onLogout={handleLogout} />
       <div className="flex-1 flex flex-col min-h-screen">
-        <Header screen={screen} role={role} onNavigate={setScreen} />
+        <Header screen={screen} role={role} onNavigate={setScreen} onViewUser={user => { setViewedUser(user); setScreen("user-profile"); }} />
         <main className="flex-1 p-6">
           {screen === "dashboard"     && <DashboardScreen role={role} />}
           {screen === "environment"   && <EnvironmentScreen />}
@@ -4876,11 +5075,12 @@ export default function App() {
           {screen === "thresholds"    && <ThresholdsScreen />}
           {screen === "zones"         && <ZonesScreen />}
           {screen === "tasks"         && <TasksScreen role={role} />}
-          {screen === "users"         && <UsersScreen />}
+          {screen === "users"         && <UsersScreen onViewProfile={user => { setViewedUser(user); setScreen("user-profile"); }} />}
           {screen === "notifications" && <OwnerNotificationsScreen />}
           {screen === "profile"       && (role === "admin" ? <AdminProfileScreen /> : role === "tech" ? <TechProfileScreen /> : <OwnerProfileScreen />)}
           {screen === "owner-yield"   && <OwnerYieldScreen />}
-          {screen === "messages"      && <MessagesScreen />}
+          {screen === "messages"      && <MessagesScreen initialContactId={messageTargetId} onViewProfile={user => { setViewedUser(user); setScreen("user-profile"); }} />}
+          {screen === "user-profile"  && <UserDirectoryProfile user={viewedUser} onMessage={user => { setMessageTargetId(user.id); setScreen("messages"); }} />}
           {screen === "reports"       && <ReportsScreen />}
           {screen === "help"          && <HelpScreen role={role} onNavigate={setScreen} />}
           {screen === "logo"          && <LogoScreen />}
