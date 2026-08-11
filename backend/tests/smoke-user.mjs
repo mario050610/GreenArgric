@@ -207,7 +207,7 @@ if (!incompleteRecipe.startsWith('Chưa có đủ nguồn')) throw new Error(`In
 const { selectSourcesForQuestion } = await import('../routes/ai.js');
 if (selectSourcesForQuestion('Cách nấu canh rau', [{ score: 0.9 }, { score: 0.8 }]).length !== 1) throw new Error('Recipe must use one primary source');
 const { isFollowUpQuestion } = await import('../routes/ai.js');
-if (isFollowUpQuestion('Mùi vị của hành tây từ đâu mà ra?') || !isFollowUpQuestion('Còn chủ vườn?')) throw new Error('Conversation follow-up detection failed');
+if (isFollowUpQuestion('Mùi vị của hành tây từ đâu mà ra?') || isFollowUpQuestion('Cách nấu thịt kho?') || !isFollowUpQuestion('Còn chủ vườn?') || !isFollowUpQuestion('Mô tả chi tiết')) throw new Error('Conversation follow-up detection failed');
 const mismatchedIntentAnswer = enforceQuestionScope('Mùi vị của hành tây từ đâu mà ra?', 'Nguyên liệu: hành tây\nSơ chế: rửa sạch\nCác bước thực hiện: thái hành');
 if (!mismatchedIntentAnswer.startsWith('Chưa có đủ nguồn')) throw new Error(`Intent mismatch was not blocked: ${mismatchedIntentAnswer}`);
 const groundedAdminResponse = await fetch(`${baseUrl}/ai/chat`, { method: 'POST', headers: ownerHeaders, body: JSON.stringify({ message: 'Quản trị viên tên gì?' }) });
@@ -217,6 +217,7 @@ const ownerFollowUpResponse = await fetch(`${baseUrl}/ai/chat`, { method: 'POST'
 const ownerFollowUp = await ownerFollowUpResponse.json();
 if (!ownerFollowUpResponse.ok || ownerFollowUp.provider !== 'system' || !ownerFollowUp.reply.includes('Huỳnh Minh Quân') || ownerFollowUp.reply.includes('Nguồn tham khảo') || ownerFollowUp.reply.includes('http')) throw new Error(`Owner follow-up failed: ${ownerFollowUpResponse.status} ${JSON.stringify(ownerFollowUp)}`);
 if (!ownerFollowUp.reply.includes('Nguyễn Thúy Ái') || !ownerFollowUp.reply.includes('Trần Thị Nhi')) throw new Error(`Owner cannot see other owners in closed system: ${JSON.stringify(ownerFollowUp)}`);
+if (!ownerFollowUp.reply.includes('\n- Huỳnh Minh Quân') || !ownerFollowUp.reply.includes('\n- Nguyễn Thúy Ái') || !ownerFollowUp.reply.includes('\n- Trần Thị Nhi')) throw new Error(`Directory entries must be displayed one account per line: ${JSON.stringify(ownerFollowUp)}`);
 const ownerContactsResponse = await fetch(`${baseUrl}/message/contacts`, { headers: ownerHeaders });
 const ownerContacts = await ownerContactsResponse.json();
 if (!ownerContactsResponse.ok || !ownerContacts.some((contact) => contact.role === 'owner') || !ownerContacts.some((contact) => contact.role === 'admin') || !ownerContacts.some((contact) => contact.role === 'technician')) throw new Error(`Owner contact ACL failed: ${JSON.stringify(ownerContacts)}`);
@@ -230,6 +231,16 @@ const areaStatusResponse = await fetch(`${baseUrl}/ai/chat`, { method: 'POST', h
 const areaStatus = await areaStatusResponse.json();
 if (!areaStatusResponse.ok || areaStatus.source !== 'green-argric-data' || !'ABCDEFGHIJKL'.split('').every((code) => areaStatus.reply.includes(`Khu ${code}`)) || areaStatus.reply.includes('Nguồn tham khảo') || areaStatus.reply.includes('http')) throw new Error(`Area status AI query failed: ${areaStatusResponse.status} ${JSON.stringify(areaStatus)}`);
 if (!areaStatus.reply.includes('Nhiệt độ 25.8') || !areaStatus.reply.includes('Nhiệt độ 24.7') || !areaStatus.reply.includes('pH 6.8')) throw new Error(`Area readings are not distinct: ${JSON.stringify(areaStatus)}`);
+if (!areaStatus.reply.includes('Khu A:\n- Cây trồng: Rau muống.') || !areaStatus.reply.includes('\n- Trạng thái: Đang hoạt động.') || !areaStatus.reply.includes('\n- Chỉ số:') || !areaStatus.reply.includes('\n- Cảnh báo:') || !areaStatus.reply.includes('\n\nKhu B:')) throw new Error(`Area overview must separate every field and area block: ${JSON.stringify(areaStatus)}`);
+const areaCountResponse = await fetch(`${baseUrl}/ai/chat`, { method: 'POST', headers: ownerHeaders, body: JSON.stringify({ message: 'Có bao nhiêu khu vực trồng?' }) });
+const areaCount = await areaCountResponse.json();
+if (!areaCountResponse.ok || !/Hệ thống hiện có \d+ khu vực trồng/.test(areaCount.reply) || !'ABCDEFGHIJKL'.split('').every((code) => areaCount.reply.includes(`Khu ${code}`))) throw new Error(`Area count query failed: ${JSON.stringify(areaCount)}`);
+const areaDetailFollowUpResponse = await fetch(`${baseUrl}/ai/chat`, { method: 'POST', headers: ownerHeaders, body: JSON.stringify({ message: 'Mô tả chi tiết', history: [{ role: 'user', content: 'Có bao nhiêu khu vực trồng?' }, { role: 'assistant', content: areaCount.reply }] }) });
+const areaDetailFollowUp = await areaDetailFollowUpResponse.json();
+if (!areaDetailFollowUpResponse.ok || areaDetailFollowUp.source !== 'green-argric-data' || !'ABCDEFGHIJKL'.split('').every((code) => areaDetailFollowUp.reply.includes(`Khu ${code}:`)) || !areaDetailFollowUp.reply.includes('Khu A:\n- Cây trồng: Rau muống.') || areaDetailFollowUp.reply.includes('Nguồn tham khảo') || areaDetailFollowUp.reply.includes('http')) throw new Error(`Contextual area detail follow-up failed: ${areaDetailFollowUpResponse.status} ${JSON.stringify(areaDetailFollowUp)}`);
+const highestWaterResponse = await fetch(`${baseUrl}/ai/chat`, { method: 'POST', headers: ownerHeaders, body: JSON.stringify({ message: 'khu vực trồng nào đang có mực nước cao nhất', history: [] }) });
+const highestWater = await highestWaterResponse.json();
+if (!highestWaterResponse.ok || highestWater.provider !== 'system' || !highestWater.reply.includes('Khu H') || !highestWater.reply.includes('78 %') || highestWater.reply.includes('Khu A:') || highestWater.reply.split('\n').length !== 1) throw new Error(`Highest water comparison must return only the matching area: ${JSON.stringify(highestWater)}`);
 const cropResponse = await fetch(`${baseUrl}/ai/chat`, { method: 'POST', headers: ownerHeaders, body: JSON.stringify({ message: 'Khu E đang trồng gì?' }) });
 const cropResult = await cropResponse.json();
 if (!cropResponse.ok || cropResult.source !== 'green-argric-data' || !cropResult.reply.includes('Khu E: đang trồng Cà chua bi') || cropResult.reply.includes('Nguồn tham khảo') || cropResult.reply.includes('http')) throw new Error(`Area crop query failed: ${JSON.stringify(cropResult)}`);

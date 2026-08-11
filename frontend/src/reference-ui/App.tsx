@@ -68,6 +68,34 @@ const ALERTS_INIT = [
   { id: 6, level: "warning", sensor: "Độ ẩm", zone: "Khu B", msg: "Độ ẩm KK thấp: 52% (min 55%)", time: "14:33", date: "28/06/2026", resolved: true },
 ];
 
+const ALERTS_STORAGE_KEY = "greenArgricAlerts";
+const loadStoredAlerts = () => {
+  try {
+    const stored = JSON.parse(localStorage.getItem(ALERTS_STORAGE_KEY) || "null");
+    if (Array.isArray(stored) && stored.length) return stored;
+  } catch { /* Dùng dữ liệu mặc định nếu bộ nhớ trình duyệt không hợp lệ. */ }
+  return ALERTS_INIT;
+};
+const persistAlerts = (alerts: typeof ALERTS_INIT) => {
+  localStorage.setItem(ALERTS_STORAGE_KEY, JSON.stringify(alerts));
+  window.dispatchEvent(new CustomEvent("greenArgricAlertsChanged", { detail: alerts }));
+};
+const usePersistentAlerts = () => {
+  const [alerts, setAlerts] = useState<typeof ALERTS_INIT>(() => loadStoredAlerts());
+  useEffect(() => {
+    const sync = (event: Event) => setAlerts((event as CustomEvent<typeof ALERTS_INIT>).detail || loadStoredAlerts());
+    window.addEventListener("greenArgricAlertsChanged", sync);
+    window.addEventListener("storage", sync);
+    return () => { window.removeEventListener("greenArgricAlertsChanged", sync); window.removeEventListener("storage", sync); };
+  }, []);
+  const updateAlerts = (updater: (current: typeof ALERTS_INIT) => typeof ALERTS_INIT) => setAlerts(current => {
+    const next = updater(current);
+    queueMicrotask(() => persistAlerts(next));
+    return next;
+  });
+  return [alerts, updateAlerts] as const;
+};
+
 const DEVICES_INIT = [
   { id: 1, name: "Máy bơm dinh dưỡng A", zone: "Khu A", type: "pump", on: true, mode: "auto", watt: 150, lastRun: "10:30" },
   { id: 2, name: "Máy bơm tưới B", zone: "Khu B", type: "pump", on: false, mode: "schedule", watt: 120, lastRun: "08:00" },
@@ -212,6 +240,8 @@ function Sidebar({ active, role, onNavigate, onLogout }: {
   const userRole = role === "owner" ? "Chủ vườn" : role === "admin" ? "Quản trị viên" : "Kỹ thuật viên";
   const menuLabel = role === "owner" ? "Quản lý vườn" : role === "admin" ? "Quản trị hệ thống" : "Công việc kỹ thuật";
   const [managedAreaText, setManagedAreaText] = useState("Đang tải phân công...");
+  const [persistentAlerts] = usePersistentAlerts();
+  const unresolvedAlertCount = persistentAlerts.filter(alert => !alert.resolved).length;
 
   useEffect(() => {
     let cancelled = false;
@@ -293,6 +323,7 @@ function Sidebar({ active, role, onNavigate, onLogout }: {
         </div>
         {nav.map(({ id, label, Icon, badge }: any) => {
           const isActive = active === id;
+          const visibleBadge = id === "alerts" ? unresolvedAlertCount : badge;
           return (
             <button key={id} onClick={() => onNavigate(id as Screen)}
               className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all"
@@ -302,9 +333,9 @@ function Sidebar({ active, role, onNavigate, onLogout }: {
               }}>
               <Icon size={17} className="flex-shrink-0" />
               <span className="text-[13px] font-medium flex-1">{label}</span>
-              {badge && !isActive && (
+              {visibleBadge > 0 && !isActive && (
                 <span className="bg-red-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full leading-none">
-                  {badge}
+                  {visibleBadge}
                 </span>
               )}
               {isActive && <ChevronRight size={13} className="opacity-50" />}
@@ -359,23 +390,103 @@ const PAGE_TITLES: Record<Screen, string> = {
   "user-profile": "Hồ sơ người dùng",
 };
 
+const FEATURE_SEARCH_KEYWORDS: Partial<Record<Screen, string>> = {
+  dashboard: "trang chủ bảng điều khiển số liệu nhanh trạng thái hệ thống",
+  environment: "nhiệt độ độ ẩm ph ec ánh sáng mực nước cảm biến môi trường",
+  devices: "thiết bị máy bơm đèn led quạt relay bật tắt điều khiển lắp đặt sửa chữa bảo trì",
+  history: "dữ liệu cũ biểu đồ nhật ký lịch sử cảm biến",
+  alerts: "cảnh báo bất thường nguy hiểm sự cố vượt ngưỡng xử lý",
+  thresholds: "ngưỡng tối đa tối thiểu tự động hóa cấu hình giới hạn",
+  zones: "vườn khu vườn khu vực trồng cây thêm khu quản lý khu chi tiết",
+  tasks: "công việc nhiệm vụ lịch hẹn sửa chữa bảo trì hiệu chỉnh cảm biến phân công kỹ thuật viên",
+  users: "tài khoản người dùng thêm tài khoản khóa mở khóa cấm xóa chủ vườn kỹ thuật viên",
+  notifications: "chuông email sms cài đặt thông báo",
+  profile: "hồ sơ cá nhân thông tin cá nhân ảnh đại diện ảnh bìa đổi mật khẩu cập nhật mật khẩu",
+  "owner-yield": "năng suất thu hoạch sản lượng thống kê cây trồng",
+  messages: "tin nhắn trò chuyện liên hệ trợ lý ai ollama nhắn chủ vườn kỹ thuật viên quản trị viên",
+  reports: "báo cáo csv tải xuống xuất dữ liệu thống kê",
+  help: "trợ giúp hướng dẫn cách dùng hỗ trợ tính năng",
+};
+
+type HeaderNotification = {
+  id: string;
+  title: string;
+  detail: string;
+  target: Screen;
+  createdAt: string;
+  read: boolean;
+};
+
+const NOTIFICATION_TEMPLATES: Array<Omit<HeaderNotification, "id" | "createdAt" | "read">> = [
+  { title: "pH vượt ngưỡng tại Khu A", detail: "Mở cảnh báo để xem giá trị pH và hướng xử lý hiện tại.", target: "alerts" },
+  { title: "Công việc bảo trì sắp đến hạn", detail: "Mở lịch công việc để xem thiết bị, khu vực và người phụ trách.", target: "tasks" },
+  { title: "Gateway đã kết nối lại", detail: "Mở quản lý thiết bị để kiểm tra trạng thái kết nối mới nhất.", target: "devices" },
+  { title: "Khu E cần được theo dõi", detail: "Mở khu vực trồng để xem sức khỏe và dữ liệu hiện tại của Khu E.", target: "zones" },
+  { title: "Có dữ liệu cảm biến mới", detail: "Mở chỉ số môi trường để xem lần cập nhật gần nhất.", target: "environment" },
+];
+
 function Header({ screen, role, onNavigate, onViewUser }: { screen: Screen; role: Role; onNavigate: (screen: Screen) => void; onViewUser: (user: any) => void }) {
   const userName = sessionUserName(role);
   const userInitial = role === "owner" ? "Q" : role === "admin" ? "N" : "K";
   const userRole = role === "owner" ? "Chủ vườn" : role === "admin" ? "Quản trị viên" : "Kỹ thuật viên";
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
-  const [unread, setUnread] = useState(2);
+  const notificationStorageKey = `greenArgricNotifications:${role}`;
+  const [notifications, setNotifications] = useState<HeaderNotification[]>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(notificationStorageKey) || "null");
+      if (Array.isArray(saved) && saved.length) return saved;
+    } catch { /* Khởi tạo lại khi dữ liệu cũ không hợp lệ. */ }
+    const now = Date.now();
+    return NOTIFICATION_TEMPLATES.slice(0, 3).map((item, index) => ({
+      ...item,
+      id: `initial-${index}`,
+      createdAt: new Date(now - (index + 1) * 17 * 60_000).toISOString(),
+      read: index === 2,
+    }));
+  });
   const [chatMode, setChatMode] = useState<"owner" | "ai">("ai");
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState([{ from: "ai", text: "Xin chào! Tôi có thể hỗ trợ phân tích tình trạng vườn và hướng dẫn vận hành." }]);
   const [searchText, setSearchText] = useState("");
   const [directory, setDirectory] = useState<any[]>([]);
+  const unread = notifications.filter(item => !item.read).length;
+  useEffect(() => {
+    localStorage.setItem(notificationStorageKey, JSON.stringify(notifications.slice(0, 20)));
+  }, [notificationStorageKey, notifications]);
+  useEffect(() => {
+    let templateIndex = 3;
+    const timer = window.setInterval(() => {
+      const template = NOTIFICATION_TEMPLATES[templateIndex % NOTIFICATION_TEMPLATES.length];
+      templateIndex += 1;
+      setNotifications(items => [{ ...template, id: `auto-${Date.now()}`, createdAt: new Date().toISOString(), read: false }, ...items].slice(0, 20));
+    }, 90_000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const relativeNotificationTime = (createdAt: string) => {
+    const minutes = Math.max(0, Math.floor((Date.now() - new Date(createdAt).getTime()) / 60_000));
+    if (minutes < 1) return "Vừa xong";
+    if (minutes < 60) return `${minutes} phút trước`;
+    const hours = Math.floor(minutes / 60);
+    return hours < 24 ? `${hours} giờ trước` : new Date(createdAt).toLocaleDateString("vi-VN");
+  };
+  const openNotification = (item: HeaderNotification) => {
+    setNotifications(items => items.map(notification => notification.id === item.id ? { ...notification, read: true } : notification));
+    setNotificationsOpen(false);
+    onNavigate(item.target);
+  };
   useEffect(() => {
     fetch(`${import.meta.env.VITE_API_URL || "http://localhost:3000"}/message/contacts`, { headers: { authorization: `Bearer ${localStorage.getItem("greenArgricToken")}` } }).then(response => response.ok ? response.json() : []).then(setDirectory);
   }, []);
   const normalizeSearch = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d").replace(/Đ/g, "D").toLowerCase().trim();
-  const searchResults = searchText.trim().length < 2 ? [] : directory.filter(user => normalizeSearch(`${user.full_name} ${user.email}`).includes(normalizeSearch(searchText))).slice(0, 6);
+  const searchQuery = normalizeSearch(searchText);
+  const roleNav = role === "owner" ? OWNER_NAV : role === "admin" ? ADMIN_NAV : TECH_NAV;
+  const featureResults = searchQuery.length < 2 ? [] : roleNav.filter((item: any) => normalizeSearch(`${item.label} ${PAGE_TITLES[item.id as Screen] || ""} ${FEATURE_SEARCH_KEYWORDS[item.id as Screen] || ""}`).includes(searchQuery)).slice(0, 6);
+  const userResults = searchQuery.length < 2 ? [] : directory.filter(user => normalizeSearch(`${user.full_name} ${user.email} ${user.role === "owner" ? "chủ vườn" : user.role === "admin" ? "quản trị viên" : "kỹ thuật viên"}`).includes(searchQuery)).slice(0, 5);
+  const chooseFirstSearchResult = () => {
+    if (featureResults[0]) { onNavigate(featureResults[0].id as Screen); setSearchText(""); }
+    else if (userResults[0]) { onViewUser(userResults[0]); setSearchText(""); }
+  };
   const sendMessage = () => {
     const text = message.trim(); if (!text) return;
     const reply = chatMode === "owner" ? "Tin nhắn đã được gửi đến Chủ vườn Huỳnh Minh Quân." : /nhiệt|temperature/i.test(text) ? "Nhiệt độ hiện tại trong bộ dữ liệu là 27.8°C, vẫn nằm trong ngưỡng cấu hình 22–30°C." : /ph/i.test(text) ? "pH hiện tại là 6.3. Khuyến nghị duy trì trong khoảng 5.8–6.5." : /cảnh báo/i.test(text) ? "Hệ thống đang có 2 cảnh báo chưa xử lý. Bạn nên ưu tiên cảnh báo pH và nhiệt độ." : "Tôi đã ghi nhận. Bạn có thể hỏi về nhiệt độ, pH, cảnh báo hoặc trạng thái thiết bị.";
@@ -390,13 +501,17 @@ function Header({ screen, role, onNavigate, onViewUser }: { screen: Screen; role
         <p className="text-xs text-gray-400">Cập nhật: 29/06/2026 · 10:45:22</p>
       </div>
       <div className="flex items-center gap-3">
-        <div className="relative flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2 w-60">
+        <div className="relative flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2 w-80">
           <Search size={14} className="text-gray-400 flex-shrink-0" />
-          <input value={searchText} onChange={event => setSearchText(event.target.value)} className="bg-transparent text-sm text-gray-600 outline-none w-full placeholder-gray-400" placeholder="Tìm tên tài khoản..." />
-          {searchResults.length > 0 && <div className="absolute left-0 right-0 top-11 z-30 bg-white border border-gray-100 rounded-xl shadow-xl p-1.5">{searchResults.map(user => <button key={user.id} onClick={() => { onViewUser(user); setSearchText(""); }} className="w-full p-2.5 rounded-lg text-left hover:bg-green-50"><div className="text-sm font-semibold text-gray-800">{user.full_name}</div><div className="text-xs text-gray-400">{user.role === "owner" ? "Chủ vườn" : user.role === "admin" ? "Quản trị viên" : "Kỹ thuật viên"} · {user.email}</div></button>)}</div>}
+          <input value={searchText} onChange={event => setSearchText(event.target.value)} onKeyDown={event => { if (event.key === "Enter") chooseFirstSearchResult(); if (event.key === "Escape") setSearchText(""); }} className="bg-transparent text-sm text-gray-600 outline-none w-full placeholder-gray-400" placeholder="Tìm tính năng hoặc tài khoản..." />
+          {searchQuery.length >= 2 && <div className="absolute right-0 top-11 z-30 w-96 max-h-[420px] overflow-auto bg-white border border-gray-100 rounded-xl shadow-xl p-2">
+            {featureResults.length > 0 && <><div className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-400">Tính năng hệ thống</div>{featureResults.map((item: any) => { const Icon = item.Icon; return <button key={`feature-${item.id}`} onClick={() => { onNavigate(item.id as Screen); setSearchText(""); }} className="w-full p-2.5 rounded-lg text-left hover:bg-green-50 flex items-center gap-3"><span className="w-8 h-8 rounded-lg bg-green-50 text-green-700 grid place-items-center flex-shrink-0"><Icon size={16}/></span><span><span className="block text-sm font-semibold text-gray-800">{item.label}</span><span className="block text-xs text-gray-400">Mở trang {PAGE_TITLES[item.id as Screen]}</span></span></button>; })}</>}
+            {userResults.length > 0 && <><div className="px-2 pt-3 pb-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-400">Tài khoản</div>{userResults.map(user => <button key={`user-${user.id}`} onClick={() => { onViewUser(user); setSearchText(""); }} className="w-full p-2.5 rounded-lg text-left hover:bg-blue-50"><div className="text-sm font-semibold text-gray-800">{user.full_name}</div><div className="text-xs text-gray-400">{user.role === "owner" ? "Chủ vườn" : user.role === "admin" ? "Quản trị viên" : "Kỹ thuật viên"} · {user.email}</div></button>)}</>}
+            {featureResults.length === 0 && userResults.length === 0 && <div className="p-4 text-center"><Search size={20} className="mx-auto text-gray-300 mb-2"/><div className="text-sm font-semibold text-gray-600">Không tìm thấy kết quả</div><div className="text-xs text-gray-400 mt-1">Thử nhập tên trang, chức năng hoặc tài khoản khác.</div></div>}
+          </div>}
         </div>
         <button onClick={() => onNavigate("messages")} className="relative w-10 h-10 rounded-xl bg-gray-50 flex items-center justify-center hover:bg-gray-100 transition-colors" title="Tin nhắn và trợ lý AI"><MessageCircle size={17} className="text-gray-600" /></button>
-        <button onClick={() => { setNotificationsOpen(!notificationsOpen); setUnread(0); }} className="relative w-10 h-10 rounded-xl bg-gray-50 flex items-center justify-center hover:bg-gray-100 transition-colors">
+        <button onClick={() => setNotificationsOpen(!notificationsOpen)} className="relative w-10 h-10 rounded-xl bg-gray-50 flex items-center justify-center hover:bg-gray-100 transition-colors" title="Thông báo hệ thống">
           <Bell size={17} className="text-gray-600" />
           {unread > 0 && <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-red-500 rounded-full text-white text-[9px] font-bold flex items-center justify-center">{unread}</span>}
         </button>
@@ -409,7 +524,7 @@ function Header({ screen, role, onNavigate, onViewUser }: { screen: Screen; role
           </div>
         </div>
       </div>
-      {notificationsOpen && <div className="absolute right-52 top-16 w-80 bg-white rounded-2xl shadow-xl border border-gray-100 p-3"><div className="font-bold text-sm px-2 py-2">Thông báo</div>{[{t:"pH vượt ngưỡng tại Khu A",s:"10:32"},{t:"Công việc bảo trì sắp đến hạn",s:"09:15"},{t:"Gateway đã kết nối lại",s:"08:47"}].map((item) => <div key={item.t} className="p-3 rounded-xl hover:bg-gray-50"><div className="text-sm text-gray-700">{item.t}</div><div className="text-xs text-gray-400 mt-1">{item.s}</div></div>)}</div>}
+      {notificationsOpen && <div className="absolute right-52 top-16 z-40 w-[360px] max-h-[480px] overflow-auto bg-white rounded-2xl shadow-xl border border-gray-100 p-3"><div className="flex items-center justify-between px-2 py-2"><div className="font-bold text-sm">Thông báo</div>{unread > 0 && <button onClick={() => setNotifications(items => items.map(item => ({ ...item, read: true })))} className="text-[11px] font-semibold text-green-700">Đánh dấu đã đọc</button>}</div>{notifications.length ? notifications.map(item => <button key={item.id} onClick={() => openNotification(item)} className={`relative w-full p-3 rounded-xl text-left hover:bg-green-50 transition-colors ${item.read ? "bg-white" : "bg-green-50/70"}`}><div className="flex gap-2"><span className={`mt-1.5 w-2 h-2 rounded-full flex-shrink-0 ${item.read ? "bg-gray-300" : "bg-green-500"}`}/><span className="min-w-0"><span className="block text-sm font-semibold text-gray-700">{item.title}</span><span className="block text-xs leading-5 text-gray-500 mt-1">{item.detail}</span><span className="block text-[11px] text-gray-400 mt-1">{relativeNotificationTime(item.createdAt)} · Mở {PAGE_TITLES[item.target]}</span></span></div></button>) : <div className="px-3 py-8 text-center text-sm text-gray-400">Chưa có thông báo</div>}</div>}
       {chatOpen && <div className="fixed inset-0 z-50 bg-black/30 flex items-end justify-end p-5"><div className="w-[390px] h-[560px] bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden"><div className="p-4 text-white flex items-center justify-between" style={{background:'#1B5E20'}}><div className="flex items-center gap-2"><Bot size={20}/><b>Trung tâm trò chuyện</b></div><button onClick={() => setChatOpen(false)}><X size={20}/></button></div><div className="grid grid-cols-2 p-2 bg-gray-50 gap-2"><button onClick={() => setChatMode('ai')} className={`py-2 rounded-xl text-xs font-semibold ${chatMode==='ai'?'bg-green-700 text-white':'bg-white text-gray-500'}`}>Trợ lý AI</button><button onClick={() => setChatMode('owner')} className={`py-2 rounded-xl text-xs font-semibold ${chatMode==='owner'?'bg-green-700 text-white':'bg-white text-gray-500'}`}>Nhắn Chủ vườn</button></div><div className="flex-1 overflow-auto p-4 space-y-3">{messages.map((item,index)=><div key={index} className={`max-w-[85%] px-3 py-2 rounded-xl text-sm ${item.from==='me'?'ml-auto bg-green-700 text-white':'bg-gray-100 text-gray-700'}`}>{item.text}</div>)}</div><div className="p-3 border-t flex gap-2"><input value={message} onChange={(event)=>setMessage(event.target.value)} onKeyDown={(event)=>event.key==='Enter'&&sendMessage()} className="flex-1 border rounded-xl px-3 text-sm" placeholder="Nhập tin nhắn..."/><button onClick={sendMessage} className="w-10 h-10 rounded-xl text-white grid place-items-center" style={{background:'#2E7D32'}}><Send size={17}/></button></div></div></div>}
     </div>
   );
@@ -911,18 +1026,56 @@ function DashboardScreen({ role }: { role: Role }) {
   return <OwnerDashboardView />;
 }
 
+type TimeGranularity = "day" | "week" | "month" | "year";
+const granularityLabel: Record<TimeGranularity, string> = { day: "Ngày", week: "Tuần", month: "Tháng", year: "Năm" };
+
+function getPeriodRange(granularity: TimeGranularity, offset: number) {
+  const now = new Date(); now.setHours(0, 0, 0, 0);
+  let start = new Date(now), end = new Date(now);
+  if (granularity === "day") start.setDate(start.getDate() - offset);
+  if (granularity === "day") end = new Date(start);
+  if (granularity === "week") { start.setDate(start.getDate() - ((start.getDay() + 6) % 7) - offset * 7); end = new Date(start); end.setDate(start.getDate() + 6); }
+  if (granularity === "month") { start = new Date(now.getFullYear(), now.getMonth() - offset, 1); end = new Date(start.getFullYear(), start.getMonth() + 1, 0); }
+  if (granularity === "year") { start = new Date(now.getFullYear() - offset, 0, 1); end = new Date(start.getFullYear(), 11, 31); }
+  const full = (date: Date) => date.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" });
+  const label = granularity === "day" ? full(start) : `${full(start)} – ${full(end)}`;
+  return { start, end, label };
+}
+
+function TimePeriodNavigator({ granularity, offset, onGranularityChange, onOffsetChange }: { granularity: TimeGranularity; offset: number; onGranularityChange: (value: TimeGranularity) => void; onOffsetChange: (value: number) => void }) {
+  const range = getPeriodRange(granularity, offset);
+  const selectGranularity = (value: TimeGranularity) => { onGranularityChange(value); onOffsetChange(0); };
+  return <div className="bg-white rounded-2xl p-4 shadow-sm space-y-3"><div className="flex flex-wrap items-center justify-between gap-3"><div><div className="text-xs font-semibold uppercase tracking-wide text-gray-400">Khoảng thời gian đang xem</div><div className="font-bold text-gray-800 mt-1">{granularityLabel[granularity]} {offset === 0 ? "hiện tại" : `trước ${offset} kỳ`} · {range.label}</div></div><div className="inline-flex rounded-xl bg-gray-100 p-1">{(["day", "week", "month", "year"] as TimeGranularity[]).map(value => <button key={value} onClick={() => selectGranularity(value)} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${granularity === value ? "bg-white text-green-700 shadow-sm" : "text-gray-500"}`}>{granularityLabel[value]}</button>)}</div></div><div className="flex flex-wrap items-center justify-end gap-2"><button onClick={() => onOffsetChange(Math.min(5, offset + 1))} disabled={offset === 5} className="px-3 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 flex items-center gap-1 disabled:opacity-40 hover:bg-gray-50"><ChevronLeft size={16}/>{granularityLabel[granularity]} trước</button><select value={offset} onChange={event => onOffsetChange(Number(event.target.value))} className="px-3 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-700 bg-white outline-none">{Array.from({ length: 6 }, (_, index) => <option key={index} value={index}>{index === 0 ? `${granularityLabel[granularity]} hiện tại` : `${index} ${granularityLabel[granularity].toLowerCase()} trước`} · {getPeriodRange(granularity, index).label}</option>)}</select><button onClick={() => onOffsetChange(Math.max(0, offset - 1))} disabled={offset === 0} className="px-3 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 flex items-center gap-1 disabled:opacity-40 hover:bg-gray-50">{granularityLabel[granularity]} sau<ChevronRight size={16}/></button></div></div>;
+}
+
+const environmentDataForPeriod = (granularity: TimeGranularity, offset: number) => {
+  const count = granularity === "day" ? HOURLY.length : granularity === "week" ? 7 : granularity === "month" ? 5 : 12;
+  const labels = granularity === "day" ? HOURLY.map(row => row.t) : granularity === "week" ? ["T2", "T3", "T4", "T5", "T6", "T7", "CN"] : granularity === "month" ? ["Tuần 1", "Tuần 2", "Tuần 3", "Tuần 4", "Tuần 5"] : Array.from({ length: 12 }, (_, index) => `T${index + 1}`);
+  return Array.from({ length: count }, (_, index) => { const source = HOURLY[index % HOURLY.length]; const shift = offset * 0.28 + (index % 3 - 1) * 0.2; return { ...source, t: labels[index], tmp: Number((source.tmp - shift).toFixed(1)), hum: Math.max(0, Math.min(100, source.hum + offset - (index % 3))), ph: Number((source.ph + ((offset + index) % 3 - 1) * 0.04).toFixed(2)), ec: Number((source.ec - offset * 0.02 + (index % 2) * 0.01).toFixed(2)), lux: Math.max(0, source.lux - offset * 18 + index * 5) }; });
+};
+
 function OwnerDashboardView() {
+  const [granularity, setGranularity] = useState<TimeGranularity>("day");
+  const [periodOffset, setPeriodOffset] = useState(0);
+  const [persistentAlerts] = usePersistentAlerts();
+  const openAlerts = persistentAlerts.filter(alert => !alert.resolved);
+  const hourlyData = environmentDataForPeriod(granularity, periodOffset);
+  const latest = hourlyData[hourlyData.length - 1];
+  const dateLabel = getPeriodRange(granularity, periodOffset).label;
+  const granularityShift = { day: 0, week: 1, month: 2, year: 3 }[granularity];
+  const visibleAlertCount = Math.min(openAlerts.length, Math.max(0, 5 - periodOffset + granularityShift));
   const metrics = [
-    { label: "Nhiệt độ KK", value: "27.8", unit: "°C", Icon: Thermometer, color: "#EF4444", bg: "#FEF2F2", change: "+0.8°", up: true, warn: true },
-    { label: "Độ ẩm KK", value: "58", unit: "%", Icon: Droplets, color: "#3B82F6", bg: "#EFF6FF", change: "-3%", up: false, warn: false },
-    { label: "pH dung dịch", value: "6.3", unit: "pH", Icon: Activity, color: "#2E7D32", bg: "#F0FDF4", change: "+0.2", up: true, warn: false },
-    { label: "EC dung dịch", value: "1.95", unit: "mS", Icon: Zap, color: "#F59E0B", bg: "#FFFBEB", change: "+0.05", up: true, warn: false },
-    { label: "Ánh sáng", value: "680", unit: "μmol", Icon: Sun, color: "#EAB308", bg: "#FEFCE8", change: "-70", up: false, warn: false },
-    { label: "Mực nước", value: "72", unit: "%", Icon: Gauge, color: "#0EA5E9", bg: "#F0F9FF", change: "-5%", up: false, warn: false },
+    { label: "Nhiệt độ KK", value: latest.tmp.toFixed(1), unit: "°C", Icon: Thermometer, color: "#EF4444", bg: "#FEF2F2", change: "+0.8°", up: true, warn: latest.tmp > 27 },
+    { label: "Độ ẩm KK", value: String(latest.hum), unit: "%", Icon: Droplets, color: "#3B82F6", bg: "#EFF6FF", change: "-3%", up: false, warn: false },
+    { label: "pH dung dịch", value: latest.ph.toFixed(2), unit: "pH", Icon: Activity, color: "#2E7D32", bg: "#F0FDF4", change: "+0.2", up: true, warn: false },
+    { label: "EC dung dịch", value: latest.ec.toFixed(2), unit: "mS", Icon: Zap, color: "#F59E0B", bg: "#FFFBEB", change: "+0.05", up: true, warn: false },
+    { label: "Ánh sáng", value: String(latest.lux), unit: "μmol", Icon: Sun, color: "#EAB308", bg: "#FEFCE8", change: "-70", up: false, warn: false },
+    { label: "Mực nước", value: String(Math.max(45, 72 - periodOffset * 2)), unit: "%", Icon: Gauge, color: "#0EA5E9", bg: "#F0F9FF", change: "-5%", up: false, warn: false },
   ];
 
   return (
     <div className="space-y-5">
+      <TimePeriodNavigator granularity={granularity} offset={periodOffset} onGranularityChange={setGranularity} onOffsetChange={setPeriodOffset} />
       {/* Metric cards */}
       <div className="grid grid-cols-6 gap-4">
         {metrics.map(m => (
@@ -948,7 +1101,7 @@ function OwnerDashboardView() {
       <div className="grid grid-cols-3 gap-5">
         <div className="col-span-2 bg-white rounded-2xl p-5 shadow-sm">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold text-gray-800">Biến động môi trường 24 giờ qua</h3>
+            <div><h3 className="font-semibold text-gray-800">Biến động môi trường theo {granularityLabel[granularity].toLowerCase()}</h3><p className="text-xs text-gray-400 mt-0.5">{dateLabel} · các mốc trong kỳ</p></div>
             <div className="flex gap-3">
               {[{ c: "#EF4444", l: "Nhiệt độ" }, { c: "#3B82F6", l: "Độ ẩm" }].map(x => (
                 <span key={x.l} className="flex items-center gap-1.5 text-xs text-gray-500">
@@ -958,7 +1111,7 @@ function OwnerDashboardView() {
             </div>
           </div>
           <ResponsiveContainer width="100%" height={220}>
-            <AreaChart data={HOURLY} margin={{ top: 4, right: 8, left: -18, bottom: 0 }}>
+            <AreaChart data={hourlyData} margin={{ top: 4, right: 8, left: -18, bottom: 0 }}>
               <defs>
                 <linearGradient id="gT" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#EF4444" stopOpacity={0.12} /><stop offset="95%" stopColor="#EF4444" stopOpacity={0} />
@@ -979,11 +1132,11 @@ function OwnerDashboardView() {
 
         <div className="bg-white rounded-2xl p-5 shadow-sm">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold text-gray-800">Cảnh báo gần đây</h3>
-            <span className="text-[10px] bg-red-50 text-red-600 px-2 py-1 rounded-full font-bold">2 mới</span>
+            <div><h3 className="font-semibold text-gray-800">Cảnh báo theo {granularityLabel[granularity].toLowerCase()}</h3><p className="text-xs text-gray-400 mt-0.5">{dateLabel}</p></div>
+            <span className="text-[10px] bg-red-50 text-red-600 px-2 py-1 rounded-full font-bold">{visibleAlertCount} cảnh báo</span>
           </div>
           <div className="space-y-2.5">
-            {ALERTS_INIT.slice(0, 5).map(a => (
+            {openAlerts.slice(0, visibleAlertCount).map(a => (
               <div key={a.id} className="p-3 rounded-xl"
                 style={{ background: a.level === "danger" ? "#FEF2F2" : a.level === "warning" ? "#FFFBEB" : "#F0FDF4" }}>
                 <div className="flex items-start gap-2">
@@ -991,11 +1144,12 @@ function OwnerDashboardView() {
                     style={{ color: a.level === "danger" ? "#EF4444" : a.level === "warning" ? "#F59E0B" : "#2E7D32" }} />
                   <div className="flex-1 min-w-0">
                     <div className="text-xs font-medium text-gray-700 line-clamp-2 leading-snug">{a.msg}</div>
-                    <div className="text-[10px] text-gray-400 mt-0.5">{a.zone} · {a.time}</div>
+                    <div className="text-[10px] text-gray-400 mt-0.5">{a.zone} · {a.time} · {dateLabel}</div>
                   </div>
                 </div>
               </div>
             ))}
+            {visibleAlertCount === 0 && <div className="h-36 rounded-xl bg-green-50 flex flex-col items-center justify-center text-center px-4"><CheckCircle size={26} className="text-green-600 mb-2"/><div className="text-sm font-bold text-green-700">Không có cảnh báo chưa xử lý</div><div className="text-xs text-green-600 mt-1">Trạng thái đã được đồng bộ từ trang Cảnh báo.</div></div>}
           </div>
         </div>
       </div>
@@ -1003,17 +1157,18 @@ function OwnerDashboardView() {
       {/* Zone health + Device summary */}
       <div className="grid grid-cols-2 gap-5">
         <div className="bg-white rounded-2xl p-5 shadow-sm">
-          <h3 className="font-semibold text-gray-800 mb-4">Sức khỏe khu vực trồng</h3>
+          <div className="mb-4"><h3 className="font-semibold text-gray-800">Sức khỏe khu vực trồng</h3><p className="text-xs text-gray-400 mt-0.5">Tổng hợp theo {granularityLabel[granularity].toLowerCase()} · {dateLabel}</p></div>
           <div className="space-y-3">
             {ZONES.map(z => {
-              const c = z.health >= 80 ? "#2E7D32" : z.health >= 65 ? "#F59E0B" : "#EF4444";
+              const historicalHealth = Math.max(45, Math.min(99, z.health - periodOffset + (z.id % 3) - granularityShift));
+              const c = historicalHealth >= 80 ? "#2E7D32" : historicalHealth >= 65 ? "#F59E0B" : "#EF4444";
               return (
                 <div key={z.id} className="flex items-center gap-3">
                   <span className="text-sm font-semibold text-gray-600 w-14 flex-shrink-0">{z.name}</span>
                   <div className="flex-1 bg-gray-100 rounded-full h-2">
-                    <div className="h-2 rounded-full" style={{ width: `${z.health}%`, background: c }} />
+                    <div className="h-2 rounded-full" style={{ width: `${historicalHealth}%`, background: c }} />
                   </div>
-                  <span className="text-sm font-bold w-10 text-right flex-shrink-0" style={{ color: c }}>{z.health}%</span>
+                  <span className="text-sm font-bold w-10 text-right flex-shrink-0" style={{ color: c }}>{historicalHealth}%</span>
                   <span className="text-xs text-gray-400 w-24 flex-shrink-0 truncate">{z.crop}</span>
                 </div>
               );
@@ -1051,16 +1206,22 @@ function OwnerDashboardView() {
 // ── Screen 3: Environment ─────────────────────────────────────────────────
 
 function EnvironmentScreen() {
+  const [granularity, setGranularity] = useState<TimeGranularity>("day");
+  const [periodOffset, setPeriodOffset] = useState(0);
+  const hourlyData = environmentDataForPeriod(granularity, periodOffset);
+  const latest = hourlyData[hourlyData.length - 1];
+  const dateLabel = getPeriodRange(granularity, periodOffset).label;
   const sensors = [
-    { label: "Nhiệt độ KK", value: 27.8, min: 15, max: 40, unit: "°C", color: "#EF4444", ok: false },
-    { label: "Độ ẩm KK", value: 58, min: 0, max: 100, unit: "%", color: "#3B82F6", ok: true },
-    { label: "pH dung dịch", value: 6.3, min: 4, max: 9, unit: "pH", color: "#2E7D32", ok: true },
-    { label: "EC dung dịch", value: 1.95, min: 0, max: 4, unit: "mS/cm", color: "#F59E0B", ok: true },
-    { label: "Ánh sáng", value: 680, min: 0, max: 1000, unit: "μmol", color: "#EAB308", ok: true },
-    { label: "Mực nước bể", value: 72, min: 0, max: 100, unit: "%", color: "#0EA5E9", ok: true },
+    { label: "Nhiệt độ KK", value: latest.tmp, min: 15, max: 40, unit: "°C", color: "#EF4444", ok: latest.tmp <= 27 },
+    { label: "Độ ẩm KK", value: latest.hum, min: 0, max: 100, unit: "%", color: "#3B82F6", ok: true },
+    { label: "pH dung dịch", value: latest.ph, min: 4, max: 9, unit: "pH", color: "#2E7D32", ok: latest.ph >= 5.5 && latest.ph <= 6.5 },
+    { label: "EC dung dịch", value: latest.ec, min: 0, max: 4, unit: "mS/cm", color: "#F59E0B", ok: true },
+    { label: "Ánh sáng", value: latest.lux, min: 0, max: 1000, unit: "μmol", color: "#EAB308", ok: true },
+    { label: "Mực nước bể", value: Math.max(45, 72 - periodOffset * 2), min: 0, max: 100, unit: "%", color: "#0EA5E9", ok: true },
   ];
   return (
     <div className="space-y-5">
+      <TimePeriodNavigator granularity={granularity} offset={periodOffset} onGranularityChange={setGranularity} onOffsetChange={setPeriodOffset} />
       <div className="grid grid-cols-6 gap-4">
         {sensors.map(s => (
           <div key={s.label} className="bg-white rounded-2xl p-4 shadow-sm flex flex-col items-center"
@@ -1076,9 +1237,9 @@ function EnvironmentScreen() {
 
       <div className="grid grid-cols-2 gap-5">
         <div className="bg-white rounded-2xl p-5 shadow-sm">
-          <h3 className="font-semibold text-gray-800 mb-4">Nhiệt độ & Độ ẩm (24h)</h3>
+          <div className="mb-4"><h3 className="font-semibold text-gray-800">Nhiệt độ & Độ ẩm</h3><p className="text-xs text-gray-400 mt-0.5">Theo {granularityLabel[granularity].toLowerCase()} · {dateLabel}</p></div>
           <ResponsiveContainer width="100%" height={200}>
-            <LineChart data={HOURLY} margin={{ top: 4, right: 8, left: -18, bottom: 0 }}>
+            <LineChart data={hourlyData} margin={{ top: 4, right: 8, left: -18, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
               <XAxis dataKey="t" tick={{ fontSize: 11, fill: "#9CA3AF" }} />
               <YAxis tick={{ fontSize: 11, fill: "#9CA3AF" }} />
@@ -1089,9 +1250,9 @@ function EnvironmentScreen() {
           </ResponsiveContainer>
         </div>
         <div className="bg-white rounded-2xl p-5 shadow-sm">
-          <h3 className="font-semibold text-gray-800 mb-4">pH & EC dung dịch (24h)</h3>
+          <div className="mb-4"><h3 className="font-semibold text-gray-800">pH & EC dung dịch</h3><p className="text-xs text-gray-400 mt-0.5">Theo {granularityLabel[granularity].toLowerCase()} · {dateLabel}</p></div>
           <ResponsiveContainer width="100%" height={200}>
-            <LineChart data={HOURLY} margin={{ top: 4, right: 8, left: -18, bottom: 0 }}>
+            <LineChart data={hourlyData} margin={{ top: 4, right: 8, left: -18, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
               <XAxis dataKey="t" tick={{ fontSize: 11, fill: "#9CA3AF" }} />
               <YAxis tick={{ fontSize: 11, fill: "#9CA3AF" }} />
@@ -1105,7 +1266,7 @@ function EnvironmentScreen() {
 
       <div className="bg-white rounded-2xl p-5 shadow-sm">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="font-semibold text-gray-800">Bảng dữ liệu cảm biến theo giờ</h3>
+          <div><h3 className="font-semibold text-gray-800">Bảng dữ liệu cảm biến theo {granularityLabel[granularity].toLowerCase()}</h3><p className="text-xs text-gray-400 mt-0.5">{dateLabel}</p></div>
           <button className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors">
             <Download size={14} /> Xuất CSV
           </button>
@@ -1119,9 +1280,9 @@ function EnvironmentScreen() {
             </tr>
           </thead>
           <tbody>
-            {HOURLY.map((row, i) => (
+            {hourlyData.map((row, i) => (
               <tr key={i} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
-                <td className="py-2.5 px-3 font-semibold text-gray-700">{row.t}</td>
+                <td className="py-2.5 px-3 font-semibold text-gray-700"><span className="block">{row.t}</span><span className="text-[10px] font-normal text-gray-400">{dateLabel}</span></td>
                 <td className="py-2.5 px-3 text-gray-600">{row.tmp}</td>
                 <td className="py-2.5 px-3 text-gray-600">{row.hum}</td>
                 <td className="py-2.5 px-3 text-gray-600">{row.ph}</td>
@@ -1234,9 +1395,9 @@ function DeviceControlView() {
 // ── Screen 5: Alerts (role-aware) ────────────────────────────────────────
 
 function AlertsScreen({ role }: { role: Role }) {
-  const [alerts, setAlerts] = useState(ALERTS_INIT);
+  const [alerts, updateAlerts] = usePersistentAlerts();
   const [filter, setFilter] = useState<"all" | "active" | "resolved">("all");
-  const resolve = (id: number) => setAlerts(a => a.map(x => x.id === id ? { ...x, resolved: true } : x));
+  const resolve = (id: number) => updateAlerts(current => current.map(alert => alert.id === id ? { ...alert, resolved: true } : alert));
   const filtered = alerts.filter(a => filter === "all" ? true : filter === "active" ? !a.resolved : a.resolved);
 
   const roleBanner = role === "owner"
@@ -1974,14 +2135,27 @@ function TempGroupedBar({ data }: { data: typeof WEEKLY }) {
 // ── Screen 9: Reports ─────────────────────────────────────────────────────
 
 function ReportsScreen() {
+  const [granularity, setGranularity] = useState<TimeGranularity>("week");
+  const [periodOffset, setPeriodOffset] = useState(0);
+  const periodRange = getPeriodRange(granularity, periodOffset).label;
+  const environmentData = environmentDataForPeriod(granularity, periodOffset);
+  const reportData = environmentData.map((row, index) => ({ day: row.t, tb: row.tmp, max: Number((row.tmp + 2.6 + (index % 2) * 0.3).toFixed(1)), min: Number((row.tmp - 2.8 + (index % 3) * 0.2).toFixed(1)), canh_bao: ((index + periodOffset) % 4) + 1 }));
+  const totalAlerts = reportData.reduce((sum, row) => sum + row.canh_bao, 0);
+  const previousData = environmentDataForPeriod(granularity, Math.min(5, periodOffset + 1));
+  const previousTotal = previousData.reduce((sum, _, index) => sum + ((index + periodOffset + 1) % 4) + 1, 0);
+  const baseZoneAlerts = Math.floor(totalAlerts / ZONES.length), remainingZoneAlerts = totalAlerts % ZONES.length;
+  const zoneAlerts = ZONES.map((_, index) => baseZoneAlerts + (index < remainingZoneAlerts ? 1 : 0));
+  const averageTemperature = (reportData.reduce((sum, row) => sum + row.tb, 0) / reportData.length).toFixed(1);
+  const averagePh = (environmentData.reduce((sum, row) => sum + row.ph, 0) / environmentData.length).toFixed(2);
   return (
     <div className="space-y-5">
+      <TimePeriodNavigator granularity={granularity} offset={periodOffset} onGranularityChange={setGranularity} onOffsetChange={setPeriodOffset} />
       <div className="grid grid-cols-4 gap-4">
         {[
-          { l: "Tổng cảnh báo tuần", v: "18", sub: "+3 so với tuần trước", c: "#EF4444", bg: "#FEF2F2" },
-          { l: "Nhiệt độ trung bình", v: "25.7°C", sub: "Trong ngưỡng an toàn", c: "#2E7D32", bg: "#F0FDF4" },
-          { l: "pH trung bình tuần", v: "6.18", sub: "Ổn định — dao động ±0.15", c: "#2E7D32", bg: "#F0FDF4" },
-          { l: "Uptime hệ thống", v: "99.2%", sub: "7 ngày liên tục", c: "#3B82F6", bg: "#EFF6FF" },
+          { l: `Tổng cảnh báo theo ${granularityLabel[granularity].toLowerCase()}`, v: String(totalAlerts), sub: `${totalAlerts >= previousTotal ? "+" : ""}${totalAlerts - previousTotal} so với kỳ trước`, c: "#EF4444", bg: "#FEF2F2" },
+          { l: "Nhiệt độ trung bình", v: `${averageTemperature}°C`, sub: periodRange, c: "#2E7D32", bg: "#F0FDF4" },
+          { l: "pH trung bình", v: averagePh, sub: periodRange, c: "#2E7D32", bg: "#F0FDF4" },
+          { l: "Uptime hệ thống", v: `${(99.7 - periodOffset * 0.12).toFixed(1)}%`, sub: `Trong ${granularityLabel[granularity].toLowerCase()} đã chọn`, c: "#3B82F6", bg: "#EFF6FF" },
         ].map(s => (
           <div key={s.l} className="rounded-2xl p-4 shadow-sm" style={{ background: s.bg }}>
             <div className="text-2xl font-bold mb-0.5" style={{ color: s.c }}>{s.v}</div>
@@ -1995,7 +2169,7 @@ function ReportsScreen() {
         {/* Temperature chart — 60% */}
         <div className="col-span-3 bg-white rounded-2xl p-5 shadow-sm">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="font-semibold text-gray-800">Nhiệt độ theo ngày trong tuần</h3>
+            <div><h3 className="font-semibold text-gray-800">Nhiệt độ theo {granularityLabel[granularity].toLowerCase()}</h3><p className="text-xs text-gray-400 mt-0.5">{periodRange}</p></div>
             <div className="flex items-center gap-4">
               {[{ c: "#FCA5A5", l: "Max" }, { c: "#166534", l: "TB" }, { c: "#BBF7D0", l: "Min" }].map(x => (
                 <span key={x.l} className="flex items-center gap-1.5 text-xs text-gray-500">
@@ -2009,7 +2183,7 @@ function ReportsScreen() {
             </div>
           </div>
           <div style={{ height: 260 }}>
-            <TempGroupedBar data={WEEKLY} />
+            <TempGroupedBar data={reportData} />
           </div>
         </div>
 
@@ -2017,10 +2191,10 @@ function ReportsScreen() {
         <div className="col-span-2 bg-white rounded-2xl p-5 shadow-sm">
           <div className="mb-4">
             <h3 className="font-semibold text-gray-800">Số cảnh báo theo ngày</h3>
-            <p className="text-xs text-gray-400 mt-0.5">Tuần này — tổng 18 cảnh báo</p>
+            <p className="text-xs text-gray-400 mt-0.5">{periodRange} · tổng {totalAlerts} cảnh báo</p>
           </div>
           <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={WEEKLY} margin={{ top: 4, right: 8, left: -18, bottom: 0 }}>
+            <BarChart data={reportData} margin={{ top: 4, right: 8, left: -18, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
               <XAxis dataKey="day" tick={{ fontSize: 11, fill: "#9CA3AF" }} />
               <YAxis tick={{ fontSize: 11, fill: "#9CA3AF" }} />
@@ -2033,7 +2207,7 @@ function ReportsScreen() {
 
       <div className="bg-white rounded-2xl p-5 shadow-sm">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="font-semibold text-gray-800">Hiệu suất khu vực trồng — Tuần 26</h3>
+          <div><h3 className="font-semibold text-gray-800">Hiệu suất khu vực trồng</h3><p className="text-xs text-gray-400 mt-0.5">Dữ liệu từ {periodRange}</p></div>
           <button className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors">
             <Download size={14} /> Xuất PDF
           </button>
@@ -2061,7 +2235,7 @@ function ReportsScreen() {
                 </td>
                 <td className="py-2.5 px-4 text-gray-600">25.8°C</td>
                 <td className="py-2.5 px-4 text-gray-600">6.2</td>
-                <td className="py-2.5 px-4 text-gray-600">{[0, 2, 1, 4, 0, 7, 2][z.id]}</td>
+                <td className="py-2.5 px-4 text-gray-600"><span className={`inline-flex min-w-7 justify-center rounded-full px-2 py-0.5 text-xs font-semibold ${zoneAlerts[z.id - 1] > 0 ? "bg-orange-50 text-orange-700" : "bg-green-50 text-green-700"}`}>{zoneAlerts[z.id - 1] ?? 0}</span></td>
                 <td className="py-2.5 px-4">
                   <span className={`text-xs px-2.5 py-0.5 rounded-full font-semibold ${z.status === "good" ? "bg-green-50 text-green-700" : z.status === "warning" ? "bg-yellow-50 text-yellow-700" : "bg-red-50 text-red-700"}`}>
                     {z.status === "good" ? "Tốt" : z.status === "warning" ? "Cần chú ý" : "Nguy hiểm"}
@@ -3858,36 +4032,80 @@ function OwnerProfileScreen() {
 // ── Screen: Owner Yield Stats ─────────────────────────────────────────────
 
 function OwnerYieldScreen() {
-  const cropData = [
-    { zone: "Khu A", crop: "Cải bó xôi", planted: "01/04/2026", harvest: "01/06/2026", kg: 18.4, target: 20, status: "done" },
-    { zone: "Khu B", crop: "Xà lách Butter", planted: "15/04/2026", harvest: "15/06/2026", kg: 12.1, target: 15, status: "done" },
-    { zone: "Khu C", crop: "Rau muống nước", planted: "01/05/2026", harvest: "15/07/2026", kg: null, target: 22, status: "growing" },
-    { zone: "Khu D", crop: "Húng quế", planted: "10/05/2026", harvest: "20/07/2026", kg: null, target: 8, status: "growing" },
-    { zone: "Khu E", crop: "Cải xanh", planted: "20/05/2026", harvest: "01/08/2026", kg: null, target: 25, status: "growing" },
-    { zone: "Khu F", crop: "Xà lách lô lô đỏ", planted: "25/05/2026", harvest: "10/08/2026", kg: null, target: 14, status: "growing" },
-  ];
+  const [granularity, setGranularity] = useState<TimeGranularity>("year");
+  const [periodOffset, setPeriodOffset] = useState(0);
+  const [yieldZones, setYieldZones] = useState(ZONES);
+  const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:3000";
+  const period = getPeriodRange(granularity, periodOffset);
+  const periodRange = period.label;
 
-  const monthlyKg = [
-    { month: "T1", kg: 0 }, { month: "T2", kg: 0 }, { month: "T3", kg: 8.2 },
-    { month: "T4", kg: 14.6 }, { month: "T5", kg: 22.1 }, { month: "T6", kg: 30.5 },
-    { month: "T7", kg: 12.0 }, { month: "T8", kg: 0 },
-  ];
+  useEffect(() => {
+    fetch(`${apiUrl}/area`, { headers: { authorization: `Bearer ${localStorage.getItem("greenArgricToken")}` } })
+      .then(response => response.ok ? response.json() : [])
+      .then(rows => {
+        if (!rows.length) return;
+        setYieldZones(rows.map((area: any) => {
+          const fallback = ZONES.find(zone => zone.id === Number(area.area_id));
+          return {
+            id: Number(area.area_id), name: String(area.area_name), crop: String(area.crop_type),
+            area: String(area.location || fallback?.area || "Chưa cập nhật"),
+            planted: String(area.planted_date || fallback?.planted || "Chưa cập nhật"),
+            harvest: String(area.harvest_date || fallback?.harvest || "Chưa xác định"),
+            health: Number(area.health_score ?? fallback?.health ?? 100),
+            sensors: Number(fallback?.sensors ?? 0), status: String(area.ui_status || fallback?.status || "good"),
+          };
+        }));
+      });
+  }, []);
+
+  // Sản lượng đã ghi nhận của dữ liệu demo. Tên cây và ngày tháng luôn lấy từ
+  // cùng nguồn Khu vực trồng; khu mới chưa có bản ghi sẽ hiển thị “Chưa ghi nhận”.
+  const yieldRecords: Record<number, { actual: number | null; target: number }> = {
+    1: { actual: 18.4, target: 20 }, 2: { actual: 13.1, target: 15 },
+    3: { actual: 16.2, target: 18 }, 4: { actual: 7.5, target: 8 },
+    5: { actual: 21.8, target: 25 }, 6: { actual: 12.7, target: 14 },
+    7: { actual: 14.9, target: 16 }, 8: { actual: 20.6, target: 24 },
+    9: { actual: 16.5, target: 18 }, 10: { actual: 12.8, target: 14 },
+    11: { actual: 22.4, target: 26 }, 12: { actual: 15.3, target: 17 },
+  };
+  const withYear = (value: string) => /^\d{2}\/\d{2}$/.test(value) ? `${value}/2026` : value;
+  const baseCropData = yieldZones.map(zone => {
+    const record = yieldRecords[zone.id] || { actual: null, target: Math.max(8, Math.round(Number.parseFloat(zone.area) || 10)) };
+    return { zone: zone.name, crop: zone.crop, planted: withYear(zone.planted), harvest: withYear(zone.harvest), kg: record.actual, target: record.target, status: record.actual == null ? "pending" : "done" };
+  });
+
+  const averageFactor = { day: 1, week: 0.97, month: 0.93, year: 0.89 }[granularity] * Math.max(0.72, 1 - periodOffset * 0.035);
+  const cropData = baseCropData.map((row, index) => {
+    const zoneVariation = 1 + (((index + periodOffset) % 5) - 2) * 0.008;
+    return { ...row, kg: row.kg == null ? null : Number((row.kg * averageFactor * zoneVariation).toFixed(1)) };
+  });
+  const yieldData = cropData.map(row => ({
+    label: row.zone.replace("Khu ", ""),
+    actual: Number((row.kg ?? 0).toFixed(1)),
+    target: Number(row.target.toFixed(1)),
+  }));
 
   const totalHarvested = cropData.filter(c => c.status === "done").reduce((s, c) => s + (c.kg ?? 0), 0);
   const totalTarget = cropData.reduce((s, c) => s + c.target, 0);
-  const avgRate = Math.round((totalHarvested / cropData.filter(c => c.status === "done").reduce((s, c) => s + c.target, 0)) * 100);
+  const completedTarget = cropData.filter(c => c.status === "done").reduce((s, c) => s + c.target, 0);
+  const avgRate = completedTarget ? Math.round((totalHarvested / completedTarget) * 100) : 0;
+  const growingCount = cropData.filter(c => c.status !== "done").length;
 
   const summaryCards = [
-    { label: "Tổng thu hoạch", value: `${totalHarvested.toFixed(1)} kg`, sub: "2 lứa hoàn thành", color: "#2E7D32", bg: "#E8F5E9" },
-    { label: "Mục tiêu tổng", value: `${totalTarget} kg`, sub: "6 khu vực · 6 lứa", color: "#1D4ED8", bg: "#EFF6FF" },
+    { label: "Tổng thu hoạch", value: `${totalHarvested.toFixed(1)} kg`, sub: `${cropData.filter(c => c.status === "done").length} lứa đã ghi nhận`, color: "#2E7D32", bg: "#E8F5E9" },
+    { label: "Mục tiêu tổng", value: `${totalTarget} kg`, sub: `${cropData.length} khu vực · ${cropData.length} lứa`, color: "#1D4ED8", bg: "#EFF6FF" },
     { label: "Tỷ lệ đạt mục tiêu", value: `${avgRate}%`, sub: "Lứa đã thu hoạch", color: "#D97706", bg: "#FEF3C7" },
-    { label: "Đang tăng trưởng", value: "4 lứa", sub: "Thu hoạch dự kiến T7–T8", color: "#7C3AED", bg: "#F5F3FF" },
+    { label: "Chưa ghi nhận", value: `${growingCount} lứa`, sub: "Chưa có số kg thực tế", color: "#7C3AED", bg: "#F5F3FF" },
   ];
 
-  const maxKg = Math.max(...monthlyKg.map(d => d.kg));
+  const maxKg = Math.max(1, ...yieldData.flatMap(d => [d.actual, d.target]));
+  const periodYieldTotal = cropData.reduce((sum, item) => sum + (item.kg ?? 0), 0);
+  const periodTargetTotal = cropData.reduce((sum, item) => sum + item.target, 0);
+  const peakYield = yieldData.length ? yieldData.reduce((best, item) => item.actual > best.actual ? item : best, yieldData[0]) : null;
 
   return (
-    <div className="max-w-3xl space-y-5">
+    <div className="space-y-5">
+      <TimePeriodNavigator granularity={granularity} offset={periodOffset} onGranularityChange={setGranularity} onOffsetChange={setPeriodOffset} />
       {/* Summary */}
       <div className="grid grid-cols-4 gap-4">
         {summaryCards.map(({ label, value, sub, color, bg }) => (
@@ -3906,41 +4124,55 @@ function OwnerYieldScreen() {
       <div className="bg-white rounded-2xl p-6 shadow-sm">
         <div className="flex items-center justify-between mb-5">
           <div>
-            <h3 className="text-sm font-bold text-gray-800">Sản lượng theo tháng</h3>
-            <p className="text-xs text-gray-400 mt-0.5">Năm 2026 — toàn bộ khu vực</p>
+            <h3 className="text-sm font-bold text-gray-800">Sản lượng trung bình theo lứa trồng</h3>
+            <p className="text-xs text-gray-400 mt-0.5">Trung bình theo {granularityLabel[granularity].toLowerCase()} · {periodRange} · đơn vị kg/lứa</p>
           </div>
           <div className="flex items-center gap-2">
             <span className="w-3 h-3 rounded-sm inline-block" style={{ background: "#2E7D32" }} />
-            <span className="text-xs text-gray-500">kg thu hoạch</span>
+            <span className="text-xs text-gray-500">Thực tế</span>
+            <span className="w-3 h-3 rounded-sm inline-block ml-2" style={{ background: "#93C5FD" }} />
+            <span className="text-xs text-gray-500">Mục tiêu</span>
           </div>
         </div>
-        <div className="flex items-end gap-3 h-40">
-          {monthlyKg.map(({ month, kg }) => {
-            const pct = maxKg > 0 ? (kg / maxKg) * 100 : 0;
-            return (
-              <div key={month} className="flex-1 flex flex-col items-center gap-1.5">
-                {kg > 0 && <span className="text-[10px] font-semibold text-gray-500">{kg}</span>}
-                <div className="w-full rounded-t-lg transition-all" style={{
-                  height: `${Math.max(pct, kg > 0 ? 8 : 0)}%`,
-                  background: kg > 0 ? "linear-gradient(180deg,#43A047,#2E7D32)" : "#F3F4F6",
-                  minHeight: kg > 0 ? 6 : 0,
-                }} />
-                <span className="text-[11px] text-gray-400">{month}</span>
-              </div>
-            );
-          })}
+        <div className="grid grid-cols-3 gap-3 mb-5">
+          <div className="rounded-xl bg-green-50 px-4 py-3"><div className="text-[11px] text-green-700">Tổng sản lượng trong kỳ</div><div className="text-lg font-extrabold text-green-800 mt-0.5">{periodYieldTotal.toFixed(1)} kg</div></div>
+          <div className="rounded-xl bg-blue-50 px-4 py-3"><div className="text-[11px] text-blue-700">Mục tiêu trong kỳ</div><div className="text-lg font-extrabold text-blue-800 mt-0.5">{periodTargetTotal.toFixed(1)} kg</div></div>
+          <div className="rounded-xl bg-orange-50 px-4 py-3"><div className="text-[11px] text-orange-700">Sản lượng cao nhất</div><div className="text-lg font-extrabold text-orange-800 mt-0.5">{peakYield ? peakYield.actual.toFixed(1) : "0.0"} kg <span className="text-xs font-semibold">· Khu {peakYield?.label || "—"}</span></div></div>
         </div>
+        <div className="mb-4 rounded-xl border border-green-100 bg-green-50 px-4 py-3 text-xs leading-relaxed text-green-800">
+          <span className="font-bold">Biểu đồ đang phân tích:</span> sản lượng trung bình của từng lứa trong khoảng thời gian đang chọn, đơn vị kg/lứa và so sánh với mục tiêu. Mỗi số trên cột được lấy trực tiếp từ đúng dòng khu vực tương ứng trong bảng chi tiết phía dưới.
+        </div>
+        {yieldData.length > 0 ? (
+          <div className="h-64 rounded-xl border border-gray-100 bg-gray-50/40 px-2 pt-4">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={yieldData} margin={{ top: 22, right: 18, left: 4, bottom: 8 }} barCategoryGap="28%">
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
+                <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#6B7280" }} axisLine={{ stroke: "#D1D5DB" }} tickLine={false} />
+                <YAxis domain={[0, Math.ceil(maxKg * 1.2)]} tick={{ fontSize: 11, fill: "#6B7280" }} axisLine={false} tickLine={false} width={52} tickFormatter={(value: number) => `${value} kg`} />
+                <Tooltip formatter={(value: number, name: string) => [`${Number(value).toFixed(1)} kg`, name]} labelFormatter={(label) => `Khu ${label}`} contentStyle={{ borderRadius: 10, border: "1px solid #D1FAE5", fontSize: 12 }} />
+                <Bar dataKey="actual" name="Thực tế" fill="#2E7D32" radius={[7, 7, 0, 0]} maxBarSize={44} label={{ position: "top", fill: "#166534", fontSize: 9, formatter: (value: number) => value > 0 ? `${Number(value).toFixed(1)} kg` : "" }} />
+                <Bar dataKey="target" name="Mục tiêu" fill="#93C5FD" radius={[7, 7, 0, 0]} maxBarSize={44} label={{ position: "top", fill: "#1D4ED8", fontSize: 9, formatter: (value: number) => value > 0 ? `${Number(value).toFixed(1)} kg` : "" }} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        ) : (
+          <div className="h-48 rounded-xl border border-dashed border-gray-200 bg-gray-50/60 flex flex-col items-center justify-center text-center px-6">
+            <BarChart2 size={30} className="text-gray-300 mb-2" />
+            <div className="text-sm font-bold text-gray-600">Không có lứa thu hoạch trong kỳ này</div>
+            <div className="text-xs text-gray-400 mt-1 max-w-lg">Không phát sinh sản lượng thực tế hoặc mục tiêu trong {periodRange}. Hãy chuyển sang tuần, tháng hoặc năm khác để xem các lứa có ngày thu hoạch.</div>
+          </div>
+        )}
       </div>
 
       {/* Crop table */}
       <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-50">
-          <h3 className="text-sm font-bold text-gray-800">Chi tiết từng lứa trồng</h3>
+          <div><h3 className="text-sm font-bold text-gray-800">Chi tiết từng lứa trồng</h3><p className="text-xs text-gray-400 mt-0.5">Cùng số liệu trung bình theo {granularityLabel[granularity].toLowerCase()} với biểu đồ · {periodRange} · {cropData.length} khu vực</p></div>
         </div>
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-gray-50">
-              {["Khu vực", "Loại cây", "Ngày trồng", "Thu hoạch DK", "Đạt / Mục tiêu", "Tỷ lệ", "Trạng thái"].map(h => (
+              {["Khu vực", "Loại cây", "Ngày trồng", "Thu hoạch DK", "Trong kỳ / Mục tiêu", "Tỷ lệ kỳ", "Trạng thái"].map(h => (
                 <th key={h} className="text-left px-5 py-3 text-xs font-semibold text-gray-500">{h}</th>
               ))}
             </tr>
@@ -3973,7 +4205,7 @@ function OwnerYieldScreen() {
                   <td className="px-5 py-3.5">
                     {status === "done"
                       ? <span className="text-xs font-semibold px-2.5 py-1 rounded-full" style={{ background: "#E8F5E9", color: "#2E7D32" }}>Đã thu hoạch</span>
-                      : <span className="text-xs font-semibold px-2.5 py-1 rounded-full" style={{ background: "#EFF6FF", color: "#1D4ED8" }}>Đang tăng trưởng</span>}
+                      : <span className="text-xs font-semibold px-2.5 py-1 rounded-full" style={{ background: "#EFF6FF", color: "#1D4ED8" }}>Chưa ghi nhận sản lượng</span>}
                   </td>
                 </tr>
               );
@@ -4872,7 +5104,7 @@ function LogoScreen() {
   );
 }
 
-function UserDirectoryProfile({ user, onMessage }: { user: any; onMessage: (user: any) => void }) {
+function UserDirectoryProfile({ user, onMessage, onBack }: { user: any; onMessage: (user: any) => void; onBack: () => void }) {
   const [avatarUrl, setAvatarUrl] = useState("");
   const [coverUrl, setCoverUrl] = useState("");
   useEffect(() => {
@@ -4883,7 +5115,7 @@ function UserDirectoryProfile({ user, onMessage }: { user: any; onMessage: (user
   if (!user) return <div className="bg-white rounded-2xl p-10 text-center text-gray-500">Chưa chọn tài khoản để xem hồ sơ.</div>;
   const roleLabel = user.role === "owner" ? "Chủ vườn" : user.role === "admin" ? "Quản trị viên" : "Kỹ thuật viên";
   const initials = String(user.full_name || "?").split(" ").slice(-2).map((part: string) => part[0]).join("").toUpperCase();
-  return <div className="max-w-3xl mx-auto bg-white rounded-2xl shadow-sm overflow-hidden">
+  return <div className="max-w-3xl mx-auto"><button onClick={onBack} className="mb-4 px-4 py-2.5 rounded-xl bg-white border border-gray-200 text-gray-700 text-sm font-semibold inline-flex items-center gap-2 hover:border-green-300 hover:text-green-700 shadow-sm"><ChevronLeft size={17}/>Quay lại</button><div className="bg-white rounded-2xl shadow-sm overflow-hidden">
     <div className="h-44 bg-gradient-to-r from-green-900 to-green-600 relative overflow-hidden">
       {coverUrl && <img src={coverUrl} alt={`Ảnh bìa của ${user.full_name}`} className="absolute inset-0 w-full h-full object-cover" />}
       <div className="absolute inset-0 bg-gradient-to-r from-green-950/35 to-green-700/10" />
@@ -4906,7 +5138,7 @@ function UserDirectoryProfile({ user, onMessage }: { user: any; onMessage: (user
       </div>
       <div className="mt-5 p-4 rounded-xl border border-green-100 bg-green-50 text-sm text-green-800">Đây là hồ sơ thành viên trong hệ thống GREEN ARGRIC khép kín. Bạn có thể liên hệ trực tiếp bằng nút Nhắn tin.</div>
     </div>
-  </div>;
+  </div></div>;
 }
 
 function MessageText({ text }: { text: string }) {
@@ -4920,10 +5152,26 @@ function MessagesScreen({ initialContactId, onViewProfile }: { initialContactId?
   const aiStorageKey = `greenArgricAiHistory:${myId}`;
   const aiGreeting = { sender_id: -1, content: "Xin chào! Bạn có thể hỏi mình về GREEN ARGRIC hoặc bất kỳ chủ đề thông thường nào như học tập, công nghệ, viết nội dung và kiến thức phổ thông.", created_at: new Date().toISOString() };
   const [mode, setMode] = useState<"people" | "ai">("people"), [contacts, setContacts] = useState<any[]>([]), [selected, setSelected] = useState<any>(null), [items, setItems] = useState<any[]>([]), [text, setText] = useState(""), [loading, setLoading] = useState(false), [generationStage, setGenerationStage] = useState(0);
+  const [, setPresenceClock] = useState(Date.now());
   const messageListRef = useRef<HTMLDivElement>(null);
   const updateAiItems = (updater: (rows: any[]) => any[]) => setItems(rows => { const next = updater(rows); localStorage.setItem(aiStorageKey, JSON.stringify(next)); return next; });
   const loadConversation = async (contact: any) => { setSelected(contact); const response = await fetch(`${apiUrl}/message/conversation/${contact.id}`, { headers: headers() }); if (response.ok) setItems(await response.json()); };
-  useEffect(() => { fetch(`${apiUrl}/message/contacts`, { headers: headers() }).then(r => r.ok ? r.json() : []).then(rows => { setContacts(rows); const target = rows.find((contact: any) => contact.id === initialContactId) || rows[0]; if (target) void loadConversation(target); }); }, [initialContactId]);
+  const loadContacts = async (selectInitial = false) => {
+    const response = await fetch(`${apiUrl}/message/contacts`, { headers: headers() });
+    if (!response.ok) return;
+    const rows = await response.json();
+    setContacts(rows);
+    setSelected((current: any) => current ? rows.find((contact: any) => contact.id === current.id) || current : current);
+    if (selectInitial) {
+      const target = rows.find((contact: any) => contact.id === initialContactId) || rows[0];
+      if (target) void loadConversation(target);
+    }
+  };
+  useEffect(() => {
+    void loadContacts(true);
+    const presenceTimer = window.setInterval(() => { void loadContacts(); setPresenceClock(Date.now()); }, 5000);
+    return () => window.clearInterval(presenceTimer);
+  }, [initialContactId]);
   useEffect(() => { if (mode !== "people" || !selected) return; const timer = window.setInterval(() => void loadConversation(selected), 3000); return () => window.clearInterval(timer); }, [mode, selected?.id]);
   useEffect(() => { messageListRef.current?.scrollTo({ top: messageListRef.current.scrollHeight, behavior: "smooth" }); }, [items, loading]);
   useEffect(() => {
@@ -4936,6 +5184,12 @@ function MessagesScreen({ initialContactId, onViewProfile }: { initialContactId?
     return () => timers.forEach(window.clearTimeout);
   }, [loading, mode]);
   const generationMessages = ["Đang phân tích câu hỏi", "Searching from GREEN ARGRIC data and verified sources", "Thinking", "Đang soạn câu trả lời"];
+  const presenceText = (contact: any) => {
+    if (contact?.online) return "Đang hoạt động";
+    if (!contact?.last_active_at) return "Chưa ghi nhận hoạt động";
+    const minutes = Math.max(1, Math.floor((Date.now() - new Date(contact.last_active_at).getTime()) / 60000));
+    return `Hoạt động ${minutes} phút trước`;
+  };
   const changeMode = (next: "people" | "ai") => { setMode(next); if (next === "ai") { try { const saved = JSON.parse(localStorage.getItem(aiStorageKey) || "[]"); setItems(Array.isArray(saved) && saved.length ? saved : [aiGreeting]); } catch { setItems([aiGreeting]); } } else if (selected) void loadConversation(selected); };
   const clearConversation = async () => {
     if (!window.confirm(mode === "ai" ? "Xóa toàn bộ lịch sử Trợ lý AI?" : `Xóa cuộc trò chuyện với ${selected?.full_name || "người này"}?`)) return;
@@ -4949,7 +5203,7 @@ function MessagesScreen({ initialContactId, onViewProfile }: { initialContactId?
     if (mode === "ai") { updateAiItems(rows => [...rows, { sender_id: myId, content, created_at: new Date().toISOString() }]); const history = items.filter(item => !(item.sender_id === -1 && item.content === aiGreeting.content)).slice(-4).map(item => ({ role: item.sender_id === myId ? "user" : "assistant", content: item.content })); const response = await fetch(`${apiUrl}/ai/chat`, { method: "POST", headers: headers(), body: JSON.stringify({ message: content, history }) }); const result = await response.json(); const errorText = result.code === "AI_NOT_CONFIGURED" ? `${result.message}. Hãy cấu hình OPENAI_API_KEY trong backend/.env.` : result.message || "Dịch vụ AI hiện không phản hồi."; updateAiItems(rows => [...rows, { sender_id: -1, content: response.ok ? result.reply : errorText, created_at: new Date().toISOString() }]); }
     else if (selected) { const response = await fetch(`${apiUrl}/message`, { method: "POST", headers: headers(), body: JSON.stringify({ receiver_id: selected.id, content }) }); const result = await response.json(); if (response.ok) setItems(rows => [...rows, result]); else window.alert(result.message); }
     setLoading(false); };
-  return <div className="grid grid-cols-[300px_1fr] bg-white rounded-2xl shadow-sm overflow-hidden min-h-[680px]"><aside className="border-r border-gray-100"><div className="p-4 grid grid-cols-2 gap-2 border-b"><button onClick={() => changeMode("people")} className={`py-2 rounded-xl text-xs font-bold ${mode === "people" ? "bg-green-700 text-white" : "bg-gray-50 text-gray-500"}`}>Mọi người</button><button onClick={() => changeMode("ai")} className={`py-2 rounded-xl text-xs font-bold ${mode === "ai" ? "bg-green-700 text-white" : "bg-gray-50 text-gray-500"}`}>Trợ lý AI</button></div>{mode === "people" ? <div className="p-2 space-y-1">{contacts.map(contact => <button key={contact.id} onClick={() => void loadConversation(contact)} className={`w-full text-left p-3 rounded-xl ${selected?.id === contact.id ? "bg-green-50" : "hover:bg-gray-50"}`}><div className="text-sm font-semibold text-gray-800">{contact.full_name}</div><div className="text-xs text-gray-400">{contact.role === "owner" ? "Chủ vườn" : contact.role === "admin" ? "Quản trị viên" : "Kỹ thuật viên"}</div></button>)}</div> : <div className="p-5 text-sm text-gray-500"><Bot size={28} className="text-green-700 mb-3"/><b className="block text-gray-800 mb-1">AI GREEN ARGRIC</b>Lịch sử được lưu riêng cho tài khoản này trên trình duyệt.</div>}</aside><section className="flex flex-col min-w-0"><div className="h-16 px-5 border-b flex items-center justify-between"><div><div className="font-bold text-gray-800">{mode === "ai" ? "Trợ lý AI" : selected?.full_name || "Chọn người nhận"}</div><div className="text-xs text-green-600">{mode === "ai" ? "Trợ lý thông minh GREEN ARGRIC" : "Nhắn tin hai chiều · tự cập nhật mỗi 3 giây"}</div></div><div className="flex gap-2">{mode === "people" && selected && <button onClick={() => onViewProfile(selected)} className="text-xs px-3 py-2 rounded-lg bg-blue-50 text-blue-700 font-semibold flex items-center gap-1"><Eye size={14}/>Xem hồ sơ</button>}{mode === "people" && selected && <button onClick={() => void loadConversation(selected)} className="text-xs px-3 py-2 rounded-lg bg-green-50 text-green-700 font-semibold">Làm mới</button>}<button onClick={() => void clearConversation()} disabled={mode === "people" && !selected} className="text-xs px-3 py-2 rounded-lg bg-red-50 text-red-600 font-semibold flex items-center gap-1 disabled:opacity-40"><Trash2 size={14}/>Xóa cuộc trò chuyện</button></div></div><div ref={messageListRef} className="flex-1 overflow-auto p-5 space-y-3 bg-gray-50/50">{items.map((item, index) => <div key={item.message_id || index} className={`max-w-[70%] rounded-2xl px-4 py-3 text-sm ${item.sender_id === myId ? "ml-auto bg-green-700 text-white" : "bg-white border text-gray-700"}`}><MessageText text={item.content}/></div>)}{loading && mode === "ai" && <div className="max-w-[70%] rounded-2xl px-4 py-3 bg-white border border-green-100 text-gray-600 shadow-sm"><div className="flex items-center gap-2 text-sm font-medium"><Bot size={16} className="text-green-700 animate-pulse"/><span>{generationMessages[generationStage]}</span><span className="flex items-center gap-1" aria-label="Đang xử lý"><i className="w-1.5 h-1.5 rounded-full bg-green-600 animate-bounce"/><i className="w-1.5 h-1.5 rounded-full bg-green-600 animate-bounce [animation-delay:150ms]"/><i className="w-1.5 h-1.5 rounded-full bg-green-600 animate-bounce [animation-delay:300ms]"/></span></div><div className="mt-2 h-1 overflow-hidden rounded-full bg-green-50"><div className="h-full w-1/2 rounded-full bg-green-600 animate-pulse"/></div></div>}</div><div className="p-4 border-t flex gap-3"><input value={text} onChange={e => setText(e.target.value)} onKeyDown={e => e.key === "Enter" && void send()} disabled={loading} className="flex-1 border rounded-xl px-4 outline-none focus:border-green-500 disabled:bg-gray-50" placeholder={loading && mode === "ai" ? "Trợ lý đang tạo câu trả lời..." : "Nhập tin nhắn..."}/><button onClick={() => void send()} disabled={loading} className="px-5 rounded-xl bg-green-700 text-white font-semibold flex items-center gap-2 disabled:opacity-60"><Send size={16}/>{loading && mode === "ai" ? "Đang xử lý..." : loading ? "Đang gửi" : "Gửi"}</button></div></section></div>;
+  return <div className="grid grid-cols-[300px_1fr] bg-white rounded-2xl shadow-sm overflow-hidden min-h-[680px]"><aside className="border-r border-gray-100"><div className="p-4 grid grid-cols-2 gap-2 border-b"><button onClick={() => changeMode("people")} className={`py-2 rounded-xl text-xs font-bold ${mode === "people" ? "bg-green-700 text-white" : "bg-gray-50 text-gray-500"}`}>Mọi người</button><button onClick={() => changeMode("ai")} className={`py-2 rounded-xl text-xs font-bold ${mode === "ai" ? "bg-green-700 text-white" : "bg-gray-50 text-gray-500"}`}>Trợ lý AI</button></div>{mode === "people" ? <div className="p-2 space-y-1">{contacts.map(contact => <button key={contact.id} onClick={() => void loadConversation(contact)} className={`w-full text-left p-3 rounded-xl ${selected?.id === contact.id ? "bg-green-50" : "hover:bg-gray-50"}`}><div className="flex items-center gap-2"><span className="relative flex-shrink-0"><span className="w-9 h-9 rounded-full bg-green-100 text-green-800 grid place-items-center text-xs font-bold">{contact.full_name.split(" ").slice(-2).map((part: string) => part[0]).join("")}</span>{contact.online && <span className="absolute right-0 bottom-0 w-3 h-3 rounded-full bg-green-500 border-2 border-white"/>}</span><span className="min-w-0"><span className="block min-w-0"><span className="block text-sm font-semibold text-gray-800 truncate">{contact.full_name}</span><span className="block text-[10px] font-semibold text-green-700 mt-0.5">{contact.role === "owner" ? "Chủ vườn" : contact.role === "admin" ? "Quản trị viên" : "Kỹ thuật viên"}</span></span><span className={`block text-[11px] ${contact.online ? "text-green-600" : "text-gray-400"}`}>{presenceText(contact)}</span></span></div></button>)}</div> : <div className="p-5 text-sm text-gray-500"><Bot size={28} className="text-green-700 mb-3"/><b className="block text-gray-800 mb-1">AI GREEN ARGRIC</b>Lịch sử được lưu riêng cho tài khoản này trên trình duyệt.</div>}</aside><section className="flex flex-col min-w-0"><div className="h-16 px-5 border-b flex items-center justify-between"><div><div className="flex items-center gap-2"><div className="font-bold text-gray-800">{mode === "ai" ? "Trợ lý AI" : selected?.full_name || "Chọn người nhận"}</div>{mode === "people" && selected && <span className="rounded-full bg-green-50 px-2 py-0.5 text-[10px] font-bold text-green-700">{selected.role === "owner" ? "Chủ vườn" : selected.role === "admin" ? "Quản trị viên" : "Kỹ thuật viên"}</span>}</div><div className={`text-xs flex items-center gap-1.5 ${mode === "ai" || selected?.online ? "text-green-600" : "text-gray-400"}`}>{mode === "people" && selected && <span className={`w-2 h-2 rounded-full ${selected.online ? "bg-green-500" : "bg-gray-300"}`}/>}<span>{mode === "ai" ? "Trợ lý thông minh GREEN ARGRIC" : selected ? `${presenceText(selected)} · tin nhắn tự cập nhật mỗi 3 giây` : "Chọn người nhận"}</span></div></div><div className="flex gap-2">{mode === "people" && selected && <button onClick={() => onViewProfile(selected)} className="text-xs px-3 py-2 rounded-lg bg-blue-50 text-blue-700 font-semibold flex items-center gap-1"><Eye size={14}/>Xem hồ sơ</button>}{mode === "people" && selected && <button onClick={() => { void loadConversation(selected); void loadContacts(); }} className="text-xs px-3 py-2 rounded-lg bg-green-50 text-green-700 font-semibold">Làm mới</button>}<button onClick={() => void clearConversation()} disabled={mode === "people" && !selected} className="text-xs px-3 py-2 rounded-lg bg-red-50 text-red-600 font-semibold flex items-center gap-1 disabled:opacity-40"><Trash2 size={14}/>Xóa cuộc trò chuyện</button></div></div><div ref={messageListRef} className="flex-1 overflow-auto p-5 space-y-3 bg-gray-50/50">{items.map((item, index) => <div key={item.message_id || index} className={`max-w-[70%] rounded-2xl px-4 py-3 text-sm ${item.sender_id === myId ? "ml-auto bg-green-700 text-white" : "bg-white border text-gray-700"}`}><MessageText text={item.content}/></div>)}{loading && mode === "ai" && <div className="max-w-[70%] rounded-2xl px-4 py-3 bg-white border border-green-100 text-gray-600 shadow-sm"><div className="flex items-center gap-2 text-sm font-medium"><Bot size={16} className="text-green-700 animate-pulse"/><span>{generationMessages[generationStage]}</span><span className="flex items-center gap-1" aria-label="Đang xử lý"><i className="w-1.5 h-1.5 rounded-full bg-green-600 animate-bounce"/><i className="w-1.5 h-1.5 rounded-full bg-green-600 animate-bounce [animation-delay:150ms]"/><i className="w-1.5 h-1.5 rounded-full bg-green-600 animate-bounce [animation-delay:300ms]"/></span></div><div className="mt-2 h-1 overflow-hidden rounded-full bg-green-50"><div className="h-full w-1/2 rounded-full bg-green-600 animate-pulse"/></div></div>}</div><div className="p-4 border-t flex gap-3"><input value={text} onChange={e => setText(e.target.value)} onKeyDown={e => e.key === "Enter" && void send()} disabled={loading} className="flex-1 border rounded-xl px-4 outline-none focus:border-green-500 disabled:bg-gray-50" placeholder={loading && mode === "ai" ? "Trợ lý đang tạo câu trả lời..." : "Nhập tin nhắn..."}/><button onClick={() => void send()} disabled={loading} className="px-5 rounded-xl bg-green-700 text-white font-semibold flex items-center gap-2 disabled:opacity-60"><Send size={16}/>{loading && mode === "ai" ? "Đang xử lý..." : loading ? "Đang gửi" : "Gửi"}</button></div></section></div>;
 }
 
 function HelpScreen({ role, onNavigate }: { role: Role; onNavigate: (screen: Screen) => void }) {
@@ -4966,7 +5220,64 @@ function HelpScreen({ role, onNavigate }: { role: Role; onNavigate: (screen: Scr
     { title: "Thêm khu vực và điều khiển thiết bị", screen: "zones" as Screen, steps: ["Mở Khu vực trồng và nhấn Thêm khu vực trồng nếu cần tạo khu mới.", "Nhập tên khu, cây trồng, vị trí hoặc diện tích và mô tả rồi lưu.", "Mở Điều khiển thiết bị, chọn đúng khu vực và thiết bị.", "Chọn chế độ phù hợp rồi bật hoặc tắt; kiểm tra thông báo xác nhận sau thao tác."] },
     { title: "Cấu hình cảnh báo và xem báo cáo", screen: "thresholds" as Screen, steps: ["Mở Cấu hình ngưỡng và chọn khu vực.", "Nhập giới hạn dưới, giới hạn trên và bật các chỉ số cần giám sát.", "Nhấn Lưu cấu hình; theo dõi chuông thông báo khi có chỉ số bất thường.", "Mở Thống kê năng suất hoặc Báo cáo để xem dữ liệu và tải tệp CSV."] },
   ];
-  return <div className="grid grid-cols-[1fr_280px] gap-5 items-start"><div className="bg-white rounded-2xl p-6 shadow-sm"><h2 className="text-xl font-bold">Hướng dẫn sử dụng từng bước</h2><p className="text-sm text-gray-500 mt-1 mb-5">Chọn một nội dung và làm lần lượt theo các bước dành cho vai trò hiện tại.</p><div className="space-y-4">{guides.map((guide,index) => <div key={guide.title} className="p-5 rounded-2xl border border-gray-100 bg-gray-50"><div className="flex items-center gap-3 mb-3"><div className="w-9 h-9 rounded-full bg-green-700 text-white grid place-items-center font-bold flex-shrink-0">{index+1}</div><h3 className="font-bold text-gray-800 text-base">{guide.title}</h3></div><ol className="ml-12 space-y-2">{guide.steps.map((step,stepIndex) => <li key={step} className="text-sm text-gray-600 flex gap-2"><span className="font-bold text-green-700 flex-shrink-0">Bước {stepIndex+1}:</span><span>{step}</span></li>)}</ol><div className="ml-12 mt-4"><button onClick={() => onNavigate(guide.screen)} className="px-4 py-2 rounded-xl bg-green-50 text-green-700 text-sm font-semibold hover:bg-green-100">Mở trang thực hiện <ChevronRight size={14} className="inline ml-1"/></button></div></div>)}</div></div><div className="bg-green-800 rounded-2xl p-6 text-white sticky top-5"><HelpCircle size={32}/><h3 className="text-lg font-bold mt-4">Cần hỗ trợ thêm?</h3><p className="text-sm text-green-100 mt-2 leading-6">Mở Trung tâm tin nhắn để hỏi quản trị viên, kỹ thuật viên hoặc Trợ lý AI. Hãy mô tả rõ khu vực, thiết bị và lỗi đang gặp.</p><button onClick={() => onNavigate("messages")} className="mt-5 w-full py-2.5 rounded-xl bg-white text-green-800 font-semibold text-sm">Mở trung tâm tin nhắn</button></div></div>;
+  const commonFaqs = [
+    { question: "Tiêu chuẩn cộng đồng của GREEN ARGRIC gồm những gì?", answer: "Thành viên phải dùng thông tin tài khoản chính xác; trao đổi lịch sự; không quấy rối, mạo danh hoặc phát tán nội dung sai lệch; không chia sẻ mật khẩu, khóa API hay dữ liệu nội bộ ra ngoài; không cố tình điều khiển thiết bị ngoài phạm vi được giao; và không khai thác lỗ hổng hoặc làm gián đoạn hệ thống." },
+    { question: "Khi nào tài khoản bị khóa tạm thời?", answer: "Tài khoản có thể bị khóa tạm thời khi nhập sai mật khẩu nhiều lần, có dấu hiệu đăng nhập bất thường, gửi nội dung quấy rối, thao tác thiết bị trái phạm vi hoặc vi phạm lần đầu ở mức có thể khắc phục. Quản trị viên phải ghi rõ lý do và thời hạn xem xét trước khi mở lại." },
+    { question: "Khi nào tài khoản bị khóa vĩnh viễn hoặc bị cấm?", answer: "Biện pháp này chỉ áp dụng cho vi phạm nghiêm trọng hoặc tái phạm, như cố ý phá hoại thiết bị/dữ liệu, chiếm quyền tài khoản, phát tán thông tin bí mật, lừa đảo, đe dọa thành viên hoặc tiếp tục vi phạm sau nhiều lần cảnh báo. Quyết định cần có bằng chứng và được quản trị viên lưu lại." },
+    { question: "Làm sao khiếu nại khi tài khoản bị khóa hoặc bị cấm?", answer: "Dùng một tài khoản còn hoạt động để mở Tin nhắn và liên hệ quản trị viên; nếu không đăng nhập được, liên hệ trực tiếp quản trị viên của hệ thống. Cung cấp họ tên, email bị khóa, thời điểm xảy ra, nội dung thông báo, lý do đề nghị xem xét và ảnh hoặc bằng chứng liên quan. Không gửi mật khẩu hay khóa API. Quản trị viên sẽ kiểm tra nhật ký, phản hồi kết quả và mở lại tài khoản nếu khiếu nại hợp lệ." },
+    { question: "Tôi xem thông báo mới ở đâu?", answer: "Nhấn biểu tượng chuông ở góc phải hoặc mở mục Cảnh báo để xem đầy đủ nội dung, mức độ và khu vực phát sinh." },
+    { question: "Làm sao biết mình đang quản lý hoặc phụ trách khu nào?", answer: "Xem dòng Khu vực quản lý hoặc Khu vực phụ trách dưới vai trò ở thanh bên. Trong trang Khu vực trồng, dùng thẻ Khu vực trồng của bạn để lọc nhanh." },
+    { question: "Tại sao tôi chỉ xem được Chi tiết mà không có nút Quản lý?", answer: "Bạn chỉ được quản lý khu vực đã phân công. Các khu vực khác vẫn cho xem thông tin nhưng không cho sửa hoặc điều khiển." },
+    { question: "Dữ liệu cảm biến không cập nhật thì làm gì?", answer: "Kiểm tra nguồn điện, cáp kết nối, trạng thái gateway và MQTT; sau đó mở Chỉ số môi trường để kiểm tra thời gian nhận dữ liệu gần nhất. Nếu vẫn lỗi, gửi tin nhắn cho kỹ thuật viên." },
+    { question: "Tại sao thiết bị không bật hoặc tắt được?", answer: "Kiểm tra thiết bị có thuộc khu vực bạn quản lý, gateway có trực tuyến và thiết bị có ở chế độ cho phép điều khiển. Sau đó thử lại và xem thông báo xác nhận." },
+    { question: "Cảnh báo được tạo khi nào?", answer: "Cảnh báo xuất hiện khi dữ liệu cảm biến vượt cấu hình ngưỡng đang áp dụng hoặc hệ thống phát hiện thiết bị, kết nối có trạng thái bất thường." },
+    { question: "Tôi có thể nhắn tin cho ai?", answer: "Mở Tin nhắn để trao đổi hai chiều với các thành viên trong hệ thống hoặc chọn Trợ lý AI để hỏi dữ liệu nội bộ và kiến thức thông thường." },
+    { question: "Trợ lý AI có nhớ câu hỏi trước không?", answer: "Có. Các câu hỏi nối tiếp như “mô tả chi tiết” sẽ kế thừa chủ đề gần nhất; khi bạn hỏi sang một chủ đề độc lập, trợ lý sẽ bắt đầu ngữ cảnh mới." },
+    { question: "Làm sao xóa lịch sử trò chuyện?", answer: "Mở đúng cuộc trò chuyện hoặc thẻ Trợ lý AI, sau đó nhấn Xóa cuộc trò chuyện và xác nhận." },
+    { question: "Tôi đổi mật khẩu và ảnh hồ sơ ở đâu?", answer: "Mở Hồ sơ cá nhân để cập nhật mật khẩu, ảnh đại diện và ảnh bìa của chính tài khoản đang đăng nhập." },
+    { question: "Làm sao tải báo cáo hoặc tệp CSV?", answer: "Mở Báo cáo hoặc Thống kê năng suất, chọn phạm vi dữ liệu rồi nhấn nút xuất tệp. Tệp sẽ được tải về máy của bạn." },
+    { question: "Tại sao một số chức năng không xuất hiện?", answer: "Thanh điều hướng và nút thao tác thay đổi theo vai trò, khu vực được phân công và trạng thái tài khoản. Hãy kiểm tra vai trò đã chọn khi đăng nhập." },
+  ];
+  const roleFaqs = role === "admin" ? [
+    { question: "Làm sao tạo tài khoản mới?", answer: "Mở Người dùng, nhấn Thêm tài khoản, nhập đủ thông tin, chọn Chủ vườn hoặc Kỹ thuật viên rồi lưu. Tài khoản được lưu để sử dụng cho các lần đăng nhập sau." },
+    { question: "Làm sao khóa, cấm, mở lại hoặc xóa tài khoản?", answer: "Trong danh sách Người dùng, chọn biểu tượng thao tác tương ứng ở đúng tài khoản. Tài khoản bị khóa hoặc cấm sẽ không thể đăng nhập cho đến khi được mở lại." },
+    { question: "Làm sao phân công khu vực và công việc?", answer: "Chỉnh chủ vườn quản lý trong Khu vực trồng; tạo hoặc cập nhật nhiệm vụ và kỹ thuật viên thực hiện trong Công việc / Bảo trì." },
+    { question: "Hoạt động mới có xuất hiện trên Tổng quan không?", answer: "Có. Các thao tác như tạo tài khoản, cập nhật ngưỡng và xử lý bảo trì được đưa vào danh sách Hoạt động gần đây." },
+  ] : role === "tech" ? [
+    { question: "Tôi xem công việc được giao ở đâu?", answer: "Mở Công việc / Bảo trì. Hệ thống chỉ hiển thị lịch và nhiệm vụ được phân công cho tài khoản kỹ thuật viên của bạn." },
+    { question: "Làm sao cập nhật kết quả sửa chữa?", answer: "Chọn Xử lý ở công việc tương ứng, cập nhật trạng thái rồi ghi đầy đủ nguyên nhân, thao tác, linh kiện và kết quả trong Nhật ký sửa chữa." },
+    { question: "Tôi có được điều khiển mọi thiết bị không?", answer: "Không. Bạn chỉ được thao tác thiết bị thuộc khu vực có công việc hoặc phạm vi kỹ thuật đã được phân công." },
+    { question: "Làm sao ghi nhận hiệu chỉnh cảm biến?", answer: "Mở thẻ Hiệu chỉnh cảm biến, chọn đúng khu vực và cảm biến, nhập giá trị chuẩn cùng giá trị đo rồi lưu kết quả." },
+  ] : [
+    { question: "Làm sao thêm khu vực trồng mới?", answer: "Mở Khu vực trồng, nhấn Thêm khu vực trồng, nhập tên khu, cây trồng, vị trí hoặc diện tích và mô tả rồi lưu." },
+    { question: "Tôi có thể quản lý khu vực của chủ vườn khác không?", answer: "Không. Bạn có thể xem chi tiết và tên người quản lý, nhưng chỉ được sửa và điều khiển các khu vực đã phân công cho mình." },
+    { question: "Làm sao thay đổi cấu hình ngưỡng?", answer: "Mở Cấu hình ngưỡng, chọn khu vực của bạn, nhập giới hạn dưới và trên cho từng chỉ số, bật áp dụng rồi nhấn lưu." },
+    { question: "Tôi theo dõi lịch kỹ thuật viên đến vườn ở đâu?", answer: "Mở Công việc / Bảo trì để xem thiết bị, nội dung, ngày thực hiện và kỹ thuật viên được phân công cho khu vực của bạn." },
+  ];
+  const faqs = [...roleFaqs, ...commonFaqs];
+  const policyCards = [
+    { title: "Tiêu chuẩn cộng đồng", Icon: Users, color: "#166534", bg: "#F0FDF4", points: ["Tôn trọng thành viên; không quấy rối, đe dọa, mạo danh hoặc gửi nội dung độc hại.", "Bảo vệ dữ liệu nội bộ; không chia sẻ mật khẩu, khóa API, thông tin cảm biến hoặc hồ sơ tài khoản ra ngoài hệ thống.", "Chỉ xem, sửa và điều khiển khu vực hoặc thiết bị đúng quyền được phân công.", "Không khai thác lỗi, phá hoại dữ liệu, tạo cảnh báo giả hoặc cố ý làm gián đoạn Gateway, MQTT và thiết bị."] },
+    { title: "Khóa tài khoản", Icon: Lock, color: "#B45309", bg: "#FFFBEB", points: ["Khóa tạm thời: áp dụng với đăng nhập bất thường, sai mật khẩu nhiều lần hoặc vi phạm có thể khắc phục.", "Khóa vĩnh viễn/bị cấm: áp dụng với hành vi nghiêm trọng, cố ý phá hoại, chiếm quyền, làm lộ dữ liệu hoặc tái phạm.", "Quản trị viên cần lưu lý do, bằng chứng, người xử lý và thời điểm áp dụng.", "Không được dùng tài khoản khác để né tránh quyết định khóa trong thời gian chờ xem xét."] },
+    { title: "Quy trình khiếu nại", Icon: MessageCircle, color: "#1D4ED8", bg: "#EFF6FF", points: ["Bước 1: Ghi lại email tài khoản, thời điểm, thông báo khóa và ảnh chụp liên quan.", "Bước 2: Liên hệ quản trị viên qua Tin nhắn; nếu không đăng nhập được, dùng kênh liên hệ trực tiếp của quản trị viên.", "Bước 3: Nêu rõ lý do khiếu nại và cung cấp bằng chứng; tuyệt đối không gửi mật khẩu hoặc khóa API.", "Bước 4: Chờ quản trị viên đối chiếu nhật ký. Kết quả có thể là mở lại, giữ khóa đến hết hạn hoặc duy trì lệnh cấm kèm lý do."] },
+  ];
+  return <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_380px] gap-5 items-start">
+    <div className="space-y-5">
+      <div className="bg-white rounded-2xl p-5 shadow-sm">
+        <h2 className="text-xl font-bold">Hướng dẫn sử dụng từng bước</h2>
+        <p className="text-sm text-gray-500 mt-1 mb-5">Chọn một nội dung và làm lần lượt theo các bước dành cho vai trò hiện tại.</p>
+        <div className="space-y-4">{guides.map((guide,index) => <div key={guide.title} className="p-4 rounded-2xl border border-gray-100 bg-gray-50"><div className="flex items-center gap-3 mb-3"><div className="w-9 h-9 rounded-full bg-green-700 text-white grid place-items-center font-bold flex-shrink-0">{index+1}</div><h3 className="font-bold text-gray-800 text-base">{guide.title}</h3></div><ol className="ml-12 space-y-2">{guide.steps.map((step,stepIndex) => <li key={step} className="text-sm text-gray-600 flex gap-2"><span className="font-bold text-green-700 flex-shrink-0">Bước {stepIndex+1}:</span><span>{step}</span></li>)}</ol><div className="ml-12 mt-4"><button onClick={() => onNavigate(guide.screen)} className="px-4 py-2 rounded-xl bg-green-50 text-green-700 text-sm font-semibold hover:bg-green-100">Mở trang thực hiện <ChevronRight size={14} className="inline ml-1"/></button></div></div>)}</div>
+      </div>
+      <div className="bg-white rounded-2xl p-5 shadow-sm">
+        <h2 className="text-xl font-bold text-gray-800">Tài khoản & Tiêu chuẩn cộng đồng</h2>
+        <p className="text-sm text-gray-500 mt-1 mb-5">Quy định áp dụng cho toàn bộ quản trị viên, chủ vườn và kỹ thuật viên trong hệ thống khép kín.</p>
+        <div className="grid grid-cols-1 2xl:grid-cols-3 gap-4">{policyCards.map(({ title, Icon, color, bg, points }) => <section key={title} className="rounded-2xl border border-gray-100 p-4"><div className="flex items-center gap-3 mb-4"><span className="w-10 h-10 rounded-xl grid place-items-center" style={{ background: bg, color }}><Icon size={19}/></span><h3 className="font-bold text-gray-800">{title}</h3></div><ul className="space-y-3">{points.map(point => <li key={point} className="text-sm text-gray-600 leading-6 flex gap-2"><span className="mt-2 w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: color }}/><span>{point}</span></li>)}</ul>{title === "Quy trình khiếu nại" && <button onClick={() => onNavigate("messages")} className="mt-4 w-full py-2.5 rounded-xl text-sm font-semibold" style={{ background: bg, color }}>Liên hệ quản trị viên</button>}</section>)}</div>
+      </div>
+    </div>
+    <aside className="space-y-5 xl:sticky xl:top-5">
+      <div className="bg-green-800 rounded-2xl p-6 text-white"><HelpCircle size={32}/><h3 className="text-lg font-bold mt-4">Cần hỗ trợ thêm?</h3><p className="text-sm text-green-100 mt-2 leading-6">Mở Trung tâm tin nhắn để hỏi quản trị viên, kỹ thuật viên hoặc Trợ lý AI. Hãy mô tả rõ khu vực, thiết bị và lỗi đang gặp.</p><button onClick={() => onNavigate("messages")} className="mt-5 w-full py-2.5 rounded-xl bg-white text-green-800 font-semibold text-sm">Mở trung tâm tin nhắn</button></div>
+      <div className="bg-white rounded-2xl p-5 shadow-sm"><div className="flex items-center gap-2 mb-1"><HelpCircle size={20} className="text-green-700"/><h3 className="text-lg font-bold text-gray-800">Câu hỏi thường gặp</h3></div><p className="text-xs text-gray-500 mb-4">Nhấn vào từng câu hỏi để xem hướng dẫn.</p><div className="space-y-2 max-h-[620px] overflow-y-auto pr-1">{faqs.map((faq) => <details key={faq.question} className="group rounded-xl border border-gray-100 bg-gray-50 open:bg-green-50 open:border-green-100"><summary className="cursor-pointer list-none px-4 py-3 text-sm font-semibold text-gray-700 flex items-center justify-between gap-3"><span>{faq.question}</span><ChevronRight size={16} className="text-green-700 flex-shrink-0 transition-transform group-open:rotate-90"/></summary><p className="px-4 pb-4 text-sm text-gray-600 leading-6">{faq.answer}</p></details>)}</div></div>
+    </aside>
+  </div>;
 }
 
 // ── App ───────────────────────────────────────────────────────────────────
@@ -4974,6 +5285,12 @@ function HelpScreen({ role, onNavigate }: { role: Role; onNavigate: (screen: Scr
 export default function App() {
   // URL param support for Figma design capture: ?screen=X&role=Y
   const params = new URLSearchParams(window.location.search);
+  if (params.get("resetAlerts") === "1") {
+    localStorage.removeItem(ALERTS_STORAGE_KEY);
+    params.delete("resetAlerts");
+    const remainingQuery = params.toString();
+    window.history.replaceState(window.history.state, "", `${window.location.pathname}${remainingQuery ? `?${remainingQuery}` : ""}`);
+  }
   const urlScreen = params.get("screen") as Screen | null;
   const urlRole = params.get("role") as Role | null;
 
@@ -4984,11 +5301,32 @@ export default function App() {
     urlScreen && urlRole ? urlRole : null
   );
   const [viewedUser, setViewedUser] = useState<any>(null);
+  const [profileReturnScreen, setProfileReturnScreen] = useState<Screen>("users");
+  const openUserProfile = (user: any, returnScreen: Screen) => {
+    setViewedUser(user);
+    setProfileReturnScreen(returnScreen);
+    window.history.pushState({ greenArgricProfile: true }, "");
+    setScreen("user-profile");
+  };
+  const closeUserProfile = () => {
+    if (window.history.state?.greenArgricProfile) window.history.back();
+    else setScreen(profileReturnScreen);
+  };
+  useEffect(() => {
+    const handleBrowserBack = () => setScreen((current) => current === "user-profile" ? profileReturnScreen : current);
+    window.addEventListener("popstate", handleBrowserBack);
+    return () => window.removeEventListener("popstate", handleBrowserBack);
+  }, [profileReturnScreen]);
   const [messageTargetId, setMessageTargetId] = useState<number | null>(null);
 
   const handleLogin = async (selectedRole: Role, username: string, password: string) => {
     const apiRole = selectedRole === "tech" ? "technician" : selectedRole;
-    const response = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:3000"}/auth/login`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: username.trim(), password, role: apiRole }) });
+    let response: Response;
+    try {
+      response = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:3000"}/auth/login`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: username.trim(), password, role: apiRole }) });
+    } catch {
+      throw new Error("Không kết nối được máy chủ. Hãy mở lại bằng MO_GREEN_ARGRIC.cmd và chờ Backend báo ONLINE.");
+    }
     const result = await response.json();
     if (!response.ok) throw new Error(result.message || "Đăng nhập thất bại");
     localStorage.setItem("greenArgricToken", result.token);
@@ -5065,7 +5403,7 @@ export default function App() {
     <div className="flex min-h-screen bg-[#F7FAF7]">
       <Sidebar active={screen} role={role} onNavigate={setScreen} onLogout={handleLogout} />
       <div className="flex-1 flex flex-col min-h-screen">
-        <Header screen={screen} role={role} onNavigate={setScreen} onViewUser={user => { setViewedUser(user); setScreen("user-profile"); }} />
+        <Header screen={screen} role={role} onNavigate={setScreen} onViewUser={user => openUserProfile(user, screen)} />
         <main className="flex-1 p-6">
           {screen === "dashboard"     && <DashboardScreen role={role} />}
           {screen === "environment"   && <EnvironmentScreen />}
@@ -5075,12 +5413,12 @@ export default function App() {
           {screen === "thresholds"    && <ThresholdsScreen />}
           {screen === "zones"         && <ZonesScreen />}
           {screen === "tasks"         && <TasksScreen role={role} />}
-          {screen === "users"         && <UsersScreen onViewProfile={user => { setViewedUser(user); setScreen("user-profile"); }} />}
+          {screen === "users"         && <UsersScreen onViewProfile={user => openUserProfile(user, "users")} />}
           {screen === "notifications" && <OwnerNotificationsScreen />}
           {screen === "profile"       && (role === "admin" ? <AdminProfileScreen /> : role === "tech" ? <TechProfileScreen /> : <OwnerProfileScreen />)}
           {screen === "owner-yield"   && <OwnerYieldScreen />}
-          {screen === "messages"      && <MessagesScreen initialContactId={messageTargetId} onViewProfile={user => { setViewedUser(user); setScreen("user-profile"); }} />}
-          {screen === "user-profile"  && <UserDirectoryProfile user={viewedUser} onMessage={user => { setMessageTargetId(user.id); setScreen("messages"); }} />}
+          {screen === "messages"      && <MessagesScreen initialContactId={messageTargetId} onViewProfile={user => openUserProfile(user, "messages")} />}
+          {screen === "user-profile"  && <UserDirectoryProfile user={viewedUser} onBack={closeUserProfile} onMessage={user => { setMessageTargetId(user.id); setScreen("messages"); }} />}
           {screen === "reports"       && <ReportsScreen />}
           {screen === "help"          && <HelpScreen role={role} onNavigate={setScreen} />}
           {screen === "logo"          && <LogoScreen />}

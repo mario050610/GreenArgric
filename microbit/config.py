@@ -1,25 +1,36 @@
-# GREEN ARGRIC Micro:bit / YOLO:BIT configuration
+# Cấu hình đúng với bộ OhStem YOLO:BIT trong ảnh của nhóm.
 
 AREA_ID = 1
 SAMPLE_INTERVAL_MS = 5000
 UART_BAUD = 115200
 
-# DHT20/AHT20 dùng I2C mặc định của Micro:bit: P19 (SCL), P20 (SDA).
+# Hai cổng I2C trên mạch mở rộng cùng dùng P19 (SCL) và P20 (SDA).
 USE_DHT20 = True
 
-# Cảm biến analog. Cần đối chiếu lại đúng khe cắm trên mạch mở rộng YOLO:BIT của nhóm.
-WATER_LEVEL_PIN = 1
-SOIL_MOISTURE_PIN = 2
-USE_SOIL_MOISTURE = False  # Không bắt buộc cho mô hình thủy canh; bật nếu nhóm có dùng.
+# Cảm biến Grove.
+USE_EXTERNAL_LIGHT = True
+USE_SOIL_MOISTURE = True
+USE_DISTANCE_WATER_LEVEL = True
 
-# Relay/thiết bị. Dùng relay điện áp thấp; không nối tải trực tiếp vào GPIO.
-# Nếu dùng shield AIoT/YOLO:BIT, nhóm phải cập nhật theo đúng chân/khe cắm thực tế.
-DEVICE_PINS = {
-    'pump': 8,
-    'grow_light': 12,
-    'fan': 16,
-    'dosing_pump': 13,
-}
+# Hiệu chuẩn cảm biến ánh sáng: giá trị ADC tối đa được quy đổi gần đúng sang lux.
+# Đây là số đo tương đối cho mô hình, không thay thế lux meter đã hiệu chuẩn.
+LIGHT_MAX_LUX = 1200
 
-# Nhiều module relay kích mức thấp. Đổi thành True nếu relay của nhóm là active-low.
+# Độ ẩm đất: thay hai giá trị này bằng số ADC đo được khi que khô và khi cắm
+# vào đất ẩm. Với cảm biến này, số ADC thường giảm khi đất ẩm hơn.
+SOIL_DRY_RAW = 800
+SOIL_WET_RAW = 350
+
+# Cảm biến siêu âm đặt trên miệng bình. Mực nước 100% tại khoảng cách FULL,
+# và 0% tại khoảng cách EMPTY. Đo thực tế rồi sửa hai số này.
+TANK_FULL_DISTANCE_CM = 3.0
+TANK_EMPTY_DISTANCE_CM = 20.0
+
+# Sơ đồ cổng trên mạch mở rộng OhStem:
+# P0      : cảm biến độ ẩm đất
+# P1      : cảm biến ánh sáng
+# P2      : relay mini (tải thử/đèn)
+# P10/P13 : cảm biến khoảng cách (trigger/echo)
+# P14/P15 : công tắc USB 2 kênh (bơm nước/bơm dự phòng)
+# P16/P12 : quạt mini (hai chân điều khiển chiều)
 RELAY_ACTIVE_LOW = False

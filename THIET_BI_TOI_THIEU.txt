@@ -1,81 +1,28 @@
-DANH SÁCH THIẾT BỊ TỐI THIỂU - GREEN ARGRIC
-================================================
+DANH SÁCH THIẾT BỊ THỰC TẾ – GREEN ARGRIC
+===========================================
 
-Mục tiêu:
-Chứng minh được luồng cảm biến gửi dữ liệu lên website và website điều khiển thiết bị thật.
+Nhóm đã có bộ OhStem gồm YOLO:BIT, mạch mở rộng, cáp USB, dây Grove, DHT20,
+cảm biến ánh sáng, cảm biến độ ẩm đất, cảm biến khoảng cách, relay mini, công
+tắc USB hai kênh, quạt mini, bơm nước, ống dẫn và LCD 16x2.
 
-1. THIẾT BỊ BẮT BUỘC
+Bộ này đã đủ để demo luồng IoT hai chiều, không cần mượn thêm thiết bị cơ bản.
 
-- 01 Micro:bit V2 hoặc YOLO:BIT.
-- 01 mạch mở rộng tương thích với Micro:bit/YOLO:BIT.
-- 01 dây USB có khả năng truyền dữ liệu.
-- 01 cảm biến DHT20 hoặc AHT20 để đo nhiệt độ và độ ẩm.
-- 01 module relay điện áp thấp, tối thiểu 1 kênh.
-- 01 tải thử: LED rời, quạt mini hoặc bơm nước mini.
-- 01 nguồn DC riêng, đúng điện áp của relay và tải thử.
-- Dây nối, breadboard hoặc terminal kết nối.
-- 01 laptop có Wi-Fi để chạy Python Gateway, Backend và Frontend.
+Cổng sử dụng:
+- DHT20: I2C1.
+- LCD 16x2 tùy chọn: I2C2.
+- Độ ẩm đất: P0.
+- Ánh sáng: P1.
+- Relay/đèn thử: P2.
+- Khoảng cách/mực nước: P10/P13.
+- Bơm qua công tắc USB: P14.
+- Kênh USB dự phòng: P15.
+- Quạt mini: P16/P12.
 
-2. THIẾT BỊ NÊN CÓ NẾU TRƯỜNG CẤP
+Các chỉ số đo thật: nhiệt độ, độ ẩm không khí, ánh sáng tương đối, độ ẩm đất,
+khoảng cách và mực nước quy đổi.
 
-- Cảm biến mực nước dạng analog.
-- Relay 4 kênh để điều khiển đồng thời bơm, đèn, quạt và bơm dinh dưỡng.
-- Bơm nước mini, quạt mini và đèn LED trồng cây.
-- Bể chứa nhỏ và ống dẫn nước để trình diễn tuần hoàn.
+Các chỉ số chưa có đầu dò thật: pH và EC/TDS. Có thể tiếp tục mô phỏng hoặc
+mượn thêm đầu dò nếu giảng viên yêu cầu đo trực tiếp.
 
-3. THIẾT BỊ CHƯA BẮT BUỘC
-
-Các thiết bị sau có thể mô phỏng bằng phần mềm nếu trường chưa có:
-
-- Cảm biến pH và đầu dò pH.
-- Cảm biến EC/TDS.
-- Cảm biến CO2.
-- Cảm biến oxy hòa tan.
-- Cảm biến nhiệt độ dung dịch.
-- Cảm biến độ ẩm giá thể.
-- Bơm nhu động châm dinh dưỡng.
-
-4. LUỒNG DEMO TỐI THIỂU
-
-Cảm biến DHT20
--> Micro:bit/YOLO:BIT
--> USB Serial
--> Python Gateway
--> MQTT hoặc Adafruit IO
--> Backend
--> Website GREEN ARGRIC.
-
-Website GREEN ARGRIC
--> MQTT hoặc Adafruit IO
--> Python Gateway
--> Micro:bit/YOLO:BIT
--> Relay
--> LED, quạt mini hoặc bơm mini.
-
-5. CẤU HÌNH CHÂN MẪU TRONG CODE
-
-- DHT20 I2C: P19 (SCL), P20 (SDA).
-- Cảm biến mực nước: P1.
-- Độ ẩm giá thể: P2.
-- Bơm tuần hoàn: P8.
-- Đèn trồng cây: P12.
-- Bơm dinh dưỡng: P13.
-- Quạt: P16.
-
-Phải kiểm tra lại chân thực tế theo mạch mở rộng của trường trước khi đấu nối.
-
-6. LƯU Ý AN TOÀN
-
-- Không cấp nguồn cho bơm, quạt hoặc relay trực tiếp từ GPIO của Micro:bit.
-- Dùng nguồn ngoài phù hợp với điện áp của tải.
-- Thử LED hoặc relay không tải trước khi nối bơm và quạt.
-- Xác định relay kích mức cao hay mức thấp trước khi chạy.
-- Không sử dụng điện lưới 220 V cho mô hình sinh viên nếu không có người chuyên môn giám sát.
-- Đặt bo mạch và nguồn điện cách xa nước.
-
-KẾT LUẬN
-
-Bộ tối thiểu cần mượn hoặc chuẩn bị là:
-Micro:bit/YOLO:BIT + mạch mở rộng + DHT20 + relay + một LED/quạt/bơm mini + nguồn riêng + dây USB và dây nối.
-
-Bộ này đủ để nghiệm thu luồng IoT hai chiều. Các cảm biến chuyên dụng còn lại có thể mô phỏng và bổ sung sau.
+An toàn: chỉ dùng điện áp thấp, không đấu 220 V, không chạy bơm khô, tắt nguồn
+trước khi đổi dây và giữ bo mạch cách xa nước.

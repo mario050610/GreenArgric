@@ -1,3 +1,28 @@
 @import './fonts.css';
 @import './tailwind.css';
 @import './theme.css';
+
+/* Trung tâm tin nhắn: cố định hai tab và chỉ cuộn danh sách liên hệ. */
+.grid.grid-cols-\[300px_1fr\].bg-white.rounded-2xl {
+  height: calc(100vh - 120px) !important;
+  min-height: 560px !important;
+}
+
+.grid.grid-cols-\[300px_1fr\].bg-white.rounded-2xl > aside {
+  display: flex !important;
+  min-height: 0 !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+}
+
+.grid.grid-cols-\[300px_1fr\].bg-white.rounded-2xl > aside > :first-child {
+  flex: 0 0 auto !important;
+}
+
+.grid.grid-cols-\[300px_1fr\].bg-white.rounded-2xl > aside > :nth-child(2) {
+  min-height: 0 !important;
+  flex: 1 1 auto !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
+}

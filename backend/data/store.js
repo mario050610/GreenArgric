@@ -8,6 +8,7 @@ const sensorDefinitions = [
   ['EC-A1', 'ec', 'mS/cm', 1, 'ga-ec'],
   ['LIGHT-A1', 'light', 'lux', 1, 'ga-light'],
   ['WATER-A1', 'water_level', '%', 1, 'ga-water-level'],
+  ['SOIL-A1', 'soil_moisture', '%', 1, 'ga-soil-moisture'],
   ['TEMP-B1', 'temperature', '°C', 2, ''],
   ['PH-B1', 'ph', 'pH', 2, ''],
   ['EC-B1', 'ec', 'mS/cm', 2, ''],
@@ -122,6 +123,7 @@ export const store = {
     { threshold_id: 4, area_id: 1, sensor_type: 'ec', min_value: 1.2, max_value: 2.2, warning_level: 'high', is_activated: true },
     { threshold_id: 5, area_id: 1, sensor_type: 'water_level', min_value: 40, max_value: 100, warning_level: 'high', is_activated: true },
     { threshold_id: 6, area_id: 1, sensor_type: 'light', min_value: 500, max_value: 1200, warning_level: 'low', is_activated: true },
+    { threshold_id: 7, area_id: 1, sensor_type: 'soil_moisture', min_value: 35, max_value: 85, warning_level: 'medium', is_activated: true },
   ],
   alerts: [
     { alert_id: 1, area_id: 1, sensor_type: 'ph', title: 'pH vượt ngưỡng trên', message: 'pH hiện tại 7.1, ngưỡng tối đa 6.5', severity: 'high', status: 'open', created_at: iso(-120) },
@@ -168,12 +170,13 @@ const defaults = {
   ec: 1.95,
   light: 680,
   water_level: 72,
+  soil_moisture: 64,
 };
 
 // Đồng bộ với số liệu riêng trên màn hình chi tiết của từng khu, tránh dùng
 // một bộ giá trị mẫu cho toàn bộ sáu khu.
 const areaDefaults = {
-  1: { temperature: 25.8, humidity: 63, ph: 6.2, ec: 1.88, light: 680, water_level: 72 },
+  1: { temperature: 25.8, humidity: 63, ph: 6.2, ec: 1.88, light: 680, water_level: 72, soil_moisture: 64 },
   2: { temperature: 24.7, humidity: 67, ph: 6.1, ec: 1.82, light: 620, water_level: 76 },
   3: { temperature: 26.3, humidity: 62, ph: 6.3, ec: 1.62, light: 590, water_level: 38 },
   4: { temperature: 25.5, humidity: 64, ph: 6.0, ec: 1.84, light: 480, water_level: 74 },
@@ -189,7 +192,7 @@ const areaDefaults = {
 
 const thresholdDefaults = {
   temperature: [22, 30, 'medium'], humidity: [60, 85, 'low'], ph: [5.8, 6.5, 'high'],
-  ec: [1.2, 2.2, 'high'], water_level: [40, 100, 'high'], light: [500, 1200, 'low'],
+  ec: [1.2, 2.2, 'high'], water_level: [40, 100, 'high'], light: [500, 1200, 'low'], soil_moisture: [35, 85, 'medium'],
   co2: [400, 1200, 'medium'], dissolved_oxygen: [5, 10, 'high'], solution_temperature: [18, 26, 'medium'],
 };
 

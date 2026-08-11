@@ -470,8 +470,30 @@ export function answerStructuredRecipe(question, source) {
 
 export function isFollowUpQuestion(question) {
   const normalized = normalizeVietnamese(question).trim();
-  return /^(con|con lai|the con|vay con|nguoi do|cai do|no thi|y tren|truong hop do|trong so do|khu vua neu|chi so|thiet bi tai do|ai la chu vuon|co lich bao tri)\b/.test(normalized)
+  const genericContinuation = /^(mo ta chi tiet|mo ta ro hon|chi tiet hon|noi ro hon|noi cu the hon|cu the hon|giai thich them|phan tich them|cho xem chi tiet|tiep tuc|noi tiep|them nua|con gi nua|chung thi sao|nhung cai do|cac muc do)(?:\s+(?:di|nhe|voi))?[?.!]*$/.test(normalized);
+  return genericContinuation
+    || /^(con|con lai|the con|vay con|nguoi do|cai do|no thi|y tren|truong hop do|trong so do|khu vua neu|chi so|thiet bi tai do|ai la chu vuon|co lich bao tri)\b/.test(normalized)
     || /\b(nhu tren|vua noi|vua neu|noi tiep|them nua|khu do|tai do|noi do|trong so do)\b/.test(normalized);
+}
+
+const isGenericDetailFollowUp = (question) => /^(mo ta chi tiet|mo ta ro hon|chi tiet hon|noi ro hon|noi cu the hon|cu the hon|giai thich them|phan tich them|cho xem chi tiet)(?:\s+(?:di|nhe|voi))?[?.!]*$/.test(normalizeVietnamese(question).trim());
+
+function contextualizeInternalFollowUp(message, history) {
+  const latestUserContext = [...history].reverse().find((item) => item.role === 'user')?.content || '';
+  const latestAssistantContext = [...history].reverse().find((item) => item.role === 'assistant')?.content || '';
+  const context = normalizeVietnamese(`${latestUserContext}\n${latestAssistantContext}`);
+  const referencedAreas = [...new Set([...context.matchAll(/\bkhu\s*([a-l])\b/gi)].map((match) => `Khu ${match[1].toUpperCase()}`))];
+
+  if (isGenericDetailFollowUp(message)) {
+    if (/(khu vuc trong|khu trong|khu vuon|\bvuon\b|\bkhu\s*[a-l]\b)/.test(context)) {
+      return `Tình hình chi tiết các khu vực trồng${referencedAreas.length ? `: ${referencedAreas.join(', ')}` : ''}`;
+    }
+    if (/(thiet bi|may bom|den led|quat|bom cham)/.test(context)) return `Mô tả chi tiết thiết bị liên quan đến câu hỏi: ${latestUserContext}`;
+    if (/(cong viec|bao tri|nhiem vu|lich hen|lich lam)/.test(context)) return `Mô tả chi tiết công việc và lịch bảo trì liên quan đến câu hỏi: ${latestUserContext}`;
+    if (/(quan tri vien|chu vuon|ky thuat vien|tai khoan|nguoi dung)/.test(context)) return `Danh sách và thông tin chi tiết liên quan đến câu hỏi: ${latestUserContext}`;
+  }
+
+  return referencedAreas.length ? `${message} Khu liên quan: ${referencedAreas.join(', ')}` : message;
 }
 
 const appendVerifiedSources = (answer, sources) => {
@@ -547,7 +569,7 @@ function answerDirectoryQuestion(question, currentUser) {
   const asksContact = /(can lien he ai|lien he ai|ho tro lien he|thong tin lien he)/.test(normalized);
   if (asksContact && !/(chu vuon|owner|ky thuat|technician|ktv)/.test(normalized)) {
     const admins = store.users.filter((user) => roleOfUser(user) === 'admin' && user.status === 'active');
-    return admins.length ? `Bạn có thể liên hệ quản trị viên: ${admins.map((user) => `${user.full_name} (${user.email})`).join('; ')}.` : 'Hiện chưa có quản trị viên đang hoạt động để liên hệ.';
+    return admins.length ? `Bạn có thể liên hệ quản trị viên:\n${admins.map((user) => `- ${user.full_name} (${user.email})`).join('\n')}` : 'Hiện chưa có quản trị viên đang hoạt động để liên hệ.';
   }
   const asksIdentity = /(ten gi|la ai|thong tin|danh sach|co nhung ai|bao nhieu)/.test(normalized)
     || /^(con\s+)?(quan tri vien|admin|chu vuon|owner|ky thuat vien|technician|ktv)\??$/.test(normalized.trim());
@@ -563,12 +585,12 @@ function answerDirectoryQuestion(question, currentUser) {
   const roleLabel = requestedRole === 'admin' ? 'Quản trị viên' : requestedRole === 'owner' ? 'Chủ vườn' : 'Kỹ thuật viên';
   const users = store.users.filter((user) => user.status === 'active' && roleOfUser(user) === requestedRole && canViewContact(currentUser, user));
   if (!users.length) return `Bạn không có quyền xem thông tin ${roleLabel.toLowerCase()} khác.`;
-  return `${roleLabel} có thể liên hệ: ${users.map((user) => `${user.full_name} (${user.email}), ${user.status === 'active' ? 'đang hoạt động' : user.status}`).join('; ')}.`;
+  return `${roleLabel} có thể liên hệ:\n${users.map((user) => `- ${user.full_name} (${user.email}), ${user.status === 'active' ? 'đang hoạt động' : user.status}.`).join('\n')}`;
 }
 
 const sensorLabels = {
   temperature: 'Nhiệt độ', humidity: 'Độ ẩm', ph: 'pH', ec: 'EC',
-  light: 'Ánh sáng', water_level: 'Mực nước',
+  light: 'Ánh sáng', water_level: 'Mực nước', soil_moisture: 'Độ ẩm đất',
 };
 
 const latestReading = (areaId, sensorType) => store.readings
@@ -590,6 +612,22 @@ export function answerSystemDataQuestion(question, currentUser) {
   const selectedAreas = areaMatch
     ? store.areas.filter((area) => areaCodes.includes(normalizeVietnamese(area.area_name).replace(/^khu\s*/, '')))
     : store.areas;
+  const sensorAliases = { temperature: 'nhiet do', humidity: 'do am', water_level: 'muc nuoc', light: 'anh sang', soil_moisture: 'do am dat', ph: 'ph', ec: 'ec' };
+  const comparisonTypes = Object.keys(sensorLabels).filter((type) => normalized.includes(sensorAliases[type]));
+  const asksHighest = /\b(cao nhat|lon nhat|max|toi da)\b/.test(normalized);
+  const asksLowest = /\b(thap nhat|nho nhat|min|toi thieu)\b/.test(normalized);
+
+  // So sánh cực trị phải được xử lý trước mọi nhánh tổng quan/liệt kê. Nhờ đó
+  // câu hỏi "khu nào ... cao nhất" chỉ trả khu đạt cực trị, không trả cả bảng.
+  if ((asksHighest || asksLowest) && comparisonTypes.length === 1) {
+    const sensorType = comparisonTypes[0];
+    const comparable = selectedAreas.map((area) => ({ area, reading: latestReading(area.area_id, sensorType) }))
+      .filter((item) => item.reading && Number.isFinite(Number(item.reading.value)));
+    if (!comparable.length) return `Chưa có dữ liệu ${sensorLabels[sensorType].toLowerCase()} của các khu vực trồng.`;
+    const targetValue = (asksHighest ? Math.max : Math.min)(...comparable.map((item) => Number(item.reading.value)));
+    const matches = comparable.filter((item) => Number(item.reading.value) === targetValue);
+    return `${matches.map((item) => `${item.area.area_name} đang trồng ${item.area.crop_type}`).join(' và ')} có ${sensorLabels[sensorType].toLowerCase()} ${asksHighest ? 'cao nhất' : 'thấp nhất'}: ${matches[0].reading.value} ${matches[0].reading.unit}.`;
+  }
 
   if (/(bao nhieu|so luong|tong so).*(khu vuon|khu vuc|khu trong)|(?:khu vuon|khu vuc|khu trong).*(bao nhieu|so luong|tong so)/.test(normalized)) {
     const areaNames = store.areas.map((area) => area.area_name).join(', ');
@@ -649,33 +687,22 @@ export function answerSystemDataQuestion(question, currentUser) {
   const sensorQuestion = !thresholdQuestion && /(cam bien|nhiet do|do am|muc nuoc|anh sang|\bph\b|\bec\b|chi so moi truong)/.test(normalized);
   if (!sensorQuestion && !thresholdQuestion && /(khu vuc|khu trong|vuon hom nay|tinh hinh.*vuon|tinh trang.*vuon|tong quan.*vuon|tong quan.*khu)/.test(normalized)) {
     return selectedAreas.map((area) => {
-      const readings = ['temperature', 'humidity', 'ph', 'ec', 'water_level']
+      const readings = ['temperature', 'humidity', 'light', 'soil_moisture', 'ph', 'ec', 'water_level']
         .map((type) => latestReading(area.area_id, type))
         .filter(Boolean)
         .map((reading) => `${sensorLabels[store.sensors.find((sensor) => sensor.sensor_id === reading.sensor_id)?.sensor_type] || 'Chỉ số'} ${reading.value} ${reading.unit}`);
       const openAlerts = store.alerts.filter((alert) => alert.area_id === area.area_id && alert.status === 'open');
-      return `- ${area.area_name}: trồng ${area.crop_type}, trạng thái ${area.status === 'active' ? 'đang hoạt động' : 'đang bảo trì'}; ${readings.length ? readings.join(', ') : 'chưa có dữ liệu cảm biến'}; ${openAlerts.length ? `${openAlerts.length} cảnh báo đang mở (${openAlerts.map((alert) => alert.title).join(', ')})` : 'không có cảnh báo đang mở'}.`;
-    }).join('\n');
+      return `${area.area_name}:\n- Cây trồng: ${area.crop_type}.\n- Trạng thái: ${area.status === 'active' ? 'Đang hoạt động' : 'Đang bảo trì'}.\n- Chỉ số: ${readings.length ? readings.join(', ') : 'Chưa có dữ liệu cảm biến'}.\n- Cảnh báo: ${openAlerts.length ? `${openAlerts.length} cảnh báo đang mở (${openAlerts.map((alert) => alert.title).join(', ')})` : 'Không có cảnh báo đang mở'}.`;
+    }).join('\n\n');
   }
 
   if (sensorQuestion) {
     const requestedTypes = Object.keys(sensorLabels).filter((type) => {
-      const aliases = { temperature: 'nhiet do', humidity: 'do am', water_level: 'muc nuoc', light: 'anh sang', ph: 'ph', ec: 'ec' };
-      return normalized.includes(aliases[type]);
+      return normalized.includes(sensorAliases[type]);
     });
     const types = requestedTypes.length ? requestedTypes : Object.keys(sensorLabels);
     if (/(bao nhieu|so luong|tong so).*cam bien|cam bien.*(bao nhieu|so luong|tong so)/.test(normalized)) {
       return selectedAreas.map((area) => `- ${area.area_name}: có ${store.sensors.filter((sensor) => sensor.area_id === area.area_id).length} cảm biến.`).join('\n');
-    }
-    const asksHighest = /(cao nhat|lon nhat|max|toi da)/.test(normalized);
-    const asksLowest = /(thap nhat|nho nhat|min|toi thieu)/.test(normalized);
-    if ((asksHighest || asksLowest) && types.length === 1) {
-      const comparable = selectedAreas.map((area) => ({ area, reading: latestReading(area.area_id, types[0]) }))
-        .filter((item) => item.reading && Number.isFinite(Number(item.reading.value)));
-      if (!comparable.length) return `Chưa có dữ liệu ${sensorLabels[types[0]].toLowerCase()} của các khu vực trồng.`;
-      const targetValue = (asksHighest ? Math.max : Math.min)(...comparable.map((item) => Number(item.reading.value)));
-      const matches = comparable.filter((item) => Number(item.reading.value) === targetValue);
-      return `${matches.map((item) => `${item.area.area_name} đang trồng ${item.area.crop_type}`).join(' và ')} có ${sensorLabels[types[0]].toLowerCase()} ${asksHighest ? 'cao nhất' : 'thấp nhất'}: ${matches[0].reading.value} ${matches[0].reading.unit}.`;
     }
     return selectedAreas.map((area) => {
       const values = types.map((type) => latestReading(area.area_id, type)).filter(Boolean)
@@ -725,7 +752,7 @@ export function answerSystemDataQuestion(question, currentUser) {
 
   if (/(nguong|cau hinh nguong)/.test(normalized)) {
     const requestedThresholdTypes = Object.keys(sensorLabels).filter((type) => {
-      const aliases = { temperature: 'nhiet do', humidity: 'do am', water_level: 'muc nuoc', light: 'anh sang', ph: 'ph', ec: 'ec' };
+      const aliases = { temperature: 'nhiet do', humidity: 'do am', water_level: 'muc nuoc', light: 'anh sang', soil_moisture: 'do am dat', ph: 'ph', ec: 'ec' };
       return normalized.includes(aliases[type]);
     });
     const thresholds = store.thresholds.filter((item) => (!areaMatch || selectedAreas.some((area) => area.area_id === item.area_id))
@@ -742,7 +769,8 @@ export function answerSystemDataQuestion(question, currentUser) {
 
 router.post('/chat', async (req, res) => {
   const message = String(req.body.message || '').trim();
-  const history = (isFollowUpQuestion(message) && Array.isArray(req.body.history) ? req.body.history : [])
+  const followsPreviousQuestion = isFollowUpQuestion(message);
+  const history = (followsPreviousQuestion && Array.isArray(req.body.history) ? req.body.history : [])
     .filter((item) => item && ['user', 'assistant'].includes(item.role) && String(item.content || '').trim())
     .slice(-4)
     .map((item) => ({
@@ -750,12 +778,10 @@ router.post('/chat', async (req, res) => {
       content: String(item.content).replace(/\n+(?:Nguồn tham khảo đã đối chiếu|Tham khảo thêm tại link):[\s\S]*$/i, '').trim().slice(0, 1600),
     }));
   if (!message) return res.status(400).json({ message: 'Nội dung câu hỏi là bắt buộc' });
-  const continuesInternalConversation = isFollowUpQuestion(message)
+  const continuesInternalConversation = followsPreviousQuestion
     && history.some((item) => isInternalSystemQuestion(item.content));
   if (isInternalSystemQuestion(message) || continuesInternalConversation) {
-    const latestAssistantContext = [...history].reverse().find((item) => item.role === 'assistant')?.content || '';
-    const referencedAreas = [...new Set([...normalizeVietnamese(latestAssistantContext).matchAll(/\bkhu\s*([a-l])\b/gi)].map((match) => `Khu ${match[1].toUpperCase()}`))];
-    const internalQuestion = continuesInternalConversation && referencedAreas.length ? `${message} Khu liên quan: ${referencedAreas.join(', ')}` : message;
+    const internalQuestion = continuesInternalConversation ? contextualizeInternalFollowUp(message, history) : message;
     const directoryAnswer = answerDirectoryQuestion(internalQuestion, req.user);
     // Danh bạ là dữ liệu nội bộ của GREEN ARGRIC, không gắn nguồn web không liên quan.
     if (directoryAnswer) return res.json({ reply: formatPlainAnswer(directoryAnswer), provider: 'system', source: 'users', sources: [] });
