@@ -470,8 +470,30 @@ export function answerStructuredRecipe(question, source) {
 
 export function isFollowUpQuestion(question) {
   const normalized = normalizeVietnamese(question).trim();
-  return /^(con|con lai|the con|vay con|nguoi do|cai do|no thi|y tren|truong hop do|trong so do|khu vua neu|chi so|thiet bi tai do|ai la chu vuon|co lich bao tri)\b/.test(normalized)
+  const genericContinuation = /^(mo ta chi tiet|mo ta ro hon|chi tiet hon|noi ro hon|noi cu the hon|cu the hon|giai thich them|phan tich them|cho xem chi tiet|tiep tuc|noi tiep|them nua|con gi nua|chung thi sao|nhung cai do|cac muc do)(?:\s+(?:di|nhe|voi))?[?.!]*$/.test(normalized);
+  return genericContinuation
+    || /^(con|con lai|the con|vay con|nguoi do|cai do|no thi|y tren|truong hop do|trong so do|khu vua neu|chi so|thiet bi tai do|ai la chu vuon|co lich bao tri)\b/.test(normalized)
     || /\b(nhu tren|vua noi|vua neu|noi tiep|them nua|khu do|tai do|noi do|trong so do)\b/.test(normalized);
+}
+
+const isGenericDetailFollowUp = (question) => /^(mo ta chi tiet|mo ta ro hon|chi tiet hon|noi ro hon|noi cu the hon|cu the hon|giai thich them|phan tich them|cho xem chi tiet)(?:\s+(?:di|nhe|voi))?[?.!]*$/.test(normalizeVietnamese(question).trim());
+
+function contextualizeInternalFollowUp(message, history) {
+  const latestUserContext = [...history].reverse().find((item) => item.role === 'user')?.content || '';
+  const latestAssistantContext = [...history].reverse().find((item) => item.role === 'assistant')?.content || '';
+  const context = normalizeVietnamese(`${latestUserContext}\n${latestAssistantContext}`);
+  const referencedAreas = [...new Set([...context.matchAll(/\bkhu\s*([a-l])\b/gi)].map((match) => `Khu ${match[1].toUpperCase()}`))];
+
+  if (isGenericDetailFollowUp(message)) {
+    if (/(khu vuc trong|khu trong|khu vuon|\bvuon\b|\bkhu\s*[a-l]\b)/.test(context)) {
+      return `Tình hình chi tiết các khu vực trồng${referencedAreas.length ? `: ${referencedAreas.join(', ')}` : ''}`;
+    }
+    if (/(thiet bi|may bom|den led|quat|bom cham)/.test(context)) return `Mô tả chi tiết thiết bị liên quan đến câu hỏi: ${latestUserContext}`;
+    if (/(cong viec|bao tri|nhiem vu|lich hen|lich lam)/.test(context)) return `Mô tả chi tiết công việc và lịch bảo trì liên quan đến câu hỏi: ${latestUserContext}`;
+    if (/(quan tri vien|chu vuon|ky thuat vien|tai khoan|nguoi dung)/.test(context)) return `Danh sách và thông tin chi tiết liên quan đến câu hỏi: ${latestUserContext}`;
+  }
+
+  return referencedAreas.length ? `${message} Khu liên quan: ${referencedAreas.join(', ')}` : message;
 }
 
 const appendVerifiedSources = (answer, sources) => {
@@ -747,7 +769,8 @@ export function answerSystemDataQuestion(question, currentUser) {
 
 router.post('/chat', async (req, res) => {
   const message = String(req.body.message || '').trim();
-  const history = (isFollowUpQuestion(message) && Array.isArray(req.body.history) ? req.body.history : [])
+  const followsPreviousQuestion = isFollowUpQuestion(message);
+  const history = (followsPreviousQuestion && Array.isArray(req.body.history) ? req.body.history : [])
     .filter((item) => item && ['user', 'assistant'].includes(item.role) && String(item.content || '').trim())
     .slice(-4)
     .map((item) => ({
@@ -755,12 +778,10 @@ router.post('/chat', async (req, res) => {
       content: String(item.content).replace(/\n+(?:Nguồn tham khảo đã đối chiếu|Tham khảo thêm tại link):[\s\S]*$/i, '').trim().slice(0, 1600),
     }));
   if (!message) return res.status(400).json({ message: 'Nội dung câu hỏi là bắt buộc' });
-  const continuesInternalConversation = isFollowUpQuestion(message)
+  const continuesInternalConversation = followsPreviousQuestion
     && history.some((item) => isInternalSystemQuestion(item.content));
   if (isInternalSystemQuestion(message) || continuesInternalConversation) {
-    const latestAssistantContext = [...history].reverse().find((item) => item.role === 'assistant')?.content || '';
-    const referencedAreas = [...new Set([...normalizeVietnamese(latestAssistantContext).matchAll(/\bkhu\s*([a-l])\b/gi)].map((match) => `Khu ${match[1].toUpperCase()}`))];
-    const internalQuestion = continuesInternalConversation && referencedAreas.length ? `${message} Khu liên quan: ${referencedAreas.join(', ')}` : message;
+    const internalQuestion = continuesInternalConversation ? contextualizeInternalFollowUp(message, history) : message;
     const directoryAnswer = answerDirectoryQuestion(internalQuestion, req.user);
     // Danh bạ là dữ liệu nội bộ của GREEN ARGRIC, không gắn nguồn web không liên quan.
     if (directoryAnswer) return res.json({ reply: formatPlainAnswer(directoryAnswer), provider: 'system', source: 'users', sources: [] });
