@@ -940,18 +940,54 @@ function DashboardScreen({ role }: { role: Role }) {
   return <OwnerDashboardView />;
 }
 
+type TimeGranularity = "day" | "week" | "month" | "year";
+const granularityLabel: Record<TimeGranularity, string> = { day: "Ngày", week: "Tuần", month: "Tháng", year: "Năm" };
+
+function getPeriodRange(granularity: TimeGranularity, offset: number) {
+  const now = new Date(); now.setHours(0, 0, 0, 0);
+  let start = new Date(now), end = new Date(now);
+  if (granularity === "day") start.setDate(start.getDate() - offset);
+  if (granularity === "day") end = new Date(start);
+  if (granularity === "week") { start.setDate(start.getDate() - ((start.getDay() + 6) % 7) - offset * 7); end = new Date(start); end.setDate(start.getDate() + 6); }
+  if (granularity === "month") { start = new Date(now.getFullYear(), now.getMonth() - offset, 1); end = new Date(start.getFullYear(), start.getMonth() + 1, 0); }
+  if (granularity === "year") { start = new Date(now.getFullYear() - offset, 0, 1); end = new Date(start.getFullYear(), 11, 31); }
+  const full = (date: Date) => date.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" });
+  const label = granularity === "day" ? full(start) : `${full(start)} – ${full(end)}`;
+  return { start, end, label };
+}
+
+function TimePeriodNavigator({ granularity, offset, onGranularityChange, onOffsetChange }: { granularity: TimeGranularity; offset: number; onGranularityChange: (value: TimeGranularity) => void; onOffsetChange: (value: number) => void }) {
+  const range = getPeriodRange(granularity, offset);
+  const selectGranularity = (value: TimeGranularity) => { onGranularityChange(value); onOffsetChange(0); };
+  return <div className="bg-white rounded-2xl p-4 shadow-sm space-y-3"><div className="flex flex-wrap items-center justify-between gap-3"><div><div className="text-xs font-semibold uppercase tracking-wide text-gray-400">Khoảng thời gian đang xem</div><div className="font-bold text-gray-800 mt-1">{granularityLabel[granularity]} {offset === 0 ? "hiện tại" : `trước ${offset} kỳ`} · {range.label}</div></div><div className="inline-flex rounded-xl bg-gray-100 p-1">{(["day", "week", "month", "year"] as TimeGranularity[]).map(value => <button key={value} onClick={() => selectGranularity(value)} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${granularity === value ? "bg-white text-green-700 shadow-sm" : "text-gray-500"}`}>{granularityLabel[value]}</button>)}</div></div><div className="flex flex-wrap items-center justify-end gap-2"><button onClick={() => onOffsetChange(Math.min(5, offset + 1))} disabled={offset === 5} className="px-3 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 flex items-center gap-1 disabled:opacity-40 hover:bg-gray-50"><ChevronLeft size={16}/>{granularityLabel[granularity]} trước</button><select value={offset} onChange={event => onOffsetChange(Number(event.target.value))} className="px-3 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-700 bg-white outline-none">{Array.from({ length: 6 }, (_, index) => <option key={index} value={index}>{index === 0 ? `${granularityLabel[granularity]} hiện tại` : `${index} ${granularityLabel[granularity].toLowerCase()} trước`} · {getPeriodRange(granularity, index).label}</option>)}</select><button onClick={() => onOffsetChange(Math.max(0, offset - 1))} disabled={offset === 0} className="px-3 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 flex items-center gap-1 disabled:opacity-40 hover:bg-gray-50">{granularityLabel[granularity]} sau<ChevronRight size={16}/></button></div></div>;
+}
+
+const environmentDataForPeriod = (granularity: TimeGranularity, offset: number) => {
+  const count = granularity === "day" ? HOURLY.length : granularity === "week" ? 7 : granularity === "month" ? 5 : 12;
+  const labels = granularity === "day" ? HOURLY.map(row => row.t) : granularity === "week" ? ["T2", "T3", "T4", "T5", "T6", "T7", "CN"] : granularity === "month" ? ["Tuần 1", "Tuần 2", "Tuần 3", "Tuần 4", "Tuần 5"] : Array.from({ length: 12 }, (_, index) => `T${index + 1}`);
+  return Array.from({ length: count }, (_, index) => { const source = HOURLY[index % HOURLY.length]; const shift = offset * 0.28 + (index % 3 - 1) * 0.2; return { ...source, t: labels[index], tmp: Number((source.tmp - shift).toFixed(1)), hum: Math.max(0, Math.min(100, source.hum + offset - (index % 3))), ph: Number((source.ph + ((offset + index) % 3 - 1) * 0.04).toFixed(2)), ec: Number((source.ec - offset * 0.02 + (index % 2) * 0.01).toFixed(2)), lux: Math.max(0, source.lux - offset * 18 + index * 5) }; });
+};
+
 function OwnerDashboardView() {
+  const [granularity, setGranularity] = useState<TimeGranularity>("day");
+  const [periodOffset, setPeriodOffset] = useState(0);
+  const hourlyData = environmentDataForPeriod(granularity, periodOffset);
+  const latest = hourlyData[hourlyData.length - 1];
+  const dateLabel = getPeriodRange(granularity, periodOffset).label;
+  const granularityShift = { day: 0, week: 1, month: 2, year: 3 }[granularity];
+  const visibleAlertCount = Math.min(ALERTS_INIT.length, Math.max(1, 5 - periodOffset + granularityShift));
   const metrics = [
-    { label: "Nhiệt độ KK", value: "27.8", unit: "°C", Icon: Thermometer, color: "#EF4444", bg: "#FEF2F2", change: "+0.8°", up: true, warn: true },
-    { label: "Độ ẩm KK", value: "58", unit: "%", Icon: Droplets, color: "#3B82F6", bg: "#EFF6FF", change: "-3%", up: false, warn: false },
-    { label: "pH dung dịch", value: "6.3", unit: "pH", Icon: Activity, color: "#2E7D32", bg: "#F0FDF4", change: "+0.2", up: true, warn: false },
-    { label: "EC dung dịch", value: "1.95", unit: "mS", Icon: Zap, color: "#F59E0B", bg: "#FFFBEB", change: "+0.05", up: true, warn: false },
-    { label: "Ánh sáng", value: "680", unit: "μmol", Icon: Sun, color: "#EAB308", bg: "#FEFCE8", change: "-70", up: false, warn: false },
-    { label: "Mực nước", value: "72", unit: "%", Icon: Gauge, color: "#0EA5E9", bg: "#F0F9FF", change: "-5%", up: false, warn: false },
+    { label: "Nhiệt độ KK", value: latest.tmp.toFixed(1), unit: "°C", Icon: Thermometer, color: "#EF4444", bg: "#FEF2F2", change: "+0.8°", up: true, warn: latest.tmp > 27 },
+    { label: "Độ ẩm KK", value: String(latest.hum), unit: "%", Icon: Droplets, color: "#3B82F6", bg: "#EFF6FF", change: "-3%", up: false, warn: false },
+    { label: "pH dung dịch", value: latest.ph.toFixed(2), unit: "pH", Icon: Activity, color: "#2E7D32", bg: "#F0FDF4", change: "+0.2", up: true, warn: false },
+    { label: "EC dung dịch", value: latest.ec.toFixed(2), unit: "mS", Icon: Zap, color: "#F59E0B", bg: "#FFFBEB", change: "+0.05", up: true, warn: false },
+    { label: "Ánh sáng", value: String(latest.lux), unit: "μmol", Icon: Sun, color: "#EAB308", bg: "#FEFCE8", change: "-70", up: false, warn: false },
+    { label: "Mực nước", value: String(Math.max(45, 72 - periodOffset * 2)), unit: "%", Icon: Gauge, color: "#0EA5E9", bg: "#F0F9FF", change: "-5%", up: false, warn: false },
   ];
 
   return (
     <div className="space-y-5">
+      <TimePeriodNavigator granularity={granularity} offset={periodOffset} onGranularityChange={setGranularity} onOffsetChange={setPeriodOffset} />
       {/* Metric cards */}
       <div className="grid grid-cols-6 gap-4">
         {metrics.map(m => (
@@ -977,7 +1013,7 @@ function OwnerDashboardView() {
       <div className="grid grid-cols-3 gap-5">
         <div className="col-span-2 bg-white rounded-2xl p-5 shadow-sm">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold text-gray-800">Biến động môi trường 24 giờ qua</h3>
+            <div><h3 className="font-semibold text-gray-800">Biến động môi trường theo {granularityLabel[granularity].toLowerCase()}</h3><p className="text-xs text-gray-400 mt-0.5">{dateLabel} · các mốc trong kỳ</p></div>
             <div className="flex gap-3">
               {[{ c: "#EF4444", l: "Nhiệt độ" }, { c: "#3B82F6", l: "Độ ẩm" }].map(x => (
                 <span key={x.l} className="flex items-center gap-1.5 text-xs text-gray-500">
@@ -987,7 +1023,7 @@ function OwnerDashboardView() {
             </div>
           </div>
           <ResponsiveContainer width="100%" height={220}>
-            <AreaChart data={HOURLY} margin={{ top: 4, right: 8, left: -18, bottom: 0 }}>
+            <AreaChart data={hourlyData} margin={{ top: 4, right: 8, left: -18, bottom: 0 }}>
               <defs>
                 <linearGradient id="gT" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#EF4444" stopOpacity={0.12} /><stop offset="95%" stopColor="#EF4444" stopOpacity={0} />
@@ -1008,11 +1044,11 @@ function OwnerDashboardView() {
 
         <div className="bg-white rounded-2xl p-5 shadow-sm">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold text-gray-800">Cảnh báo gần đây</h3>
-            <span className="text-[10px] bg-red-50 text-red-600 px-2 py-1 rounded-full font-bold">2 mới</span>
+            <div><h3 className="font-semibold text-gray-800">Cảnh báo theo {granularityLabel[granularity].toLowerCase()}</h3><p className="text-xs text-gray-400 mt-0.5">{dateLabel}</p></div>
+            <span className="text-[10px] bg-red-50 text-red-600 px-2 py-1 rounded-full font-bold">{visibleAlertCount} cảnh báo</span>
           </div>
           <div className="space-y-2.5">
-            {ALERTS_INIT.slice(0, 5).map(a => (
+            {ALERTS_INIT.slice(0, visibleAlertCount).map(a => (
               <div key={a.id} className="p-3 rounded-xl"
                 style={{ background: a.level === "danger" ? "#FEF2F2" : a.level === "warning" ? "#FFFBEB" : "#F0FDF4" }}>
                 <div className="flex items-start gap-2">
@@ -1020,7 +1056,7 @@ function OwnerDashboardView() {
                     style={{ color: a.level === "danger" ? "#EF4444" : a.level === "warning" ? "#F59E0B" : "#2E7D32" }} />
                   <div className="flex-1 min-w-0">
                     <div className="text-xs font-medium text-gray-700 line-clamp-2 leading-snug">{a.msg}</div>
-                    <div className="text-[10px] text-gray-400 mt-0.5">{a.zone} · {a.time}</div>
+                    <div className="text-[10px] text-gray-400 mt-0.5">{a.zone} · {a.time} · {dateLabel}</div>
                   </div>
                 </div>
               </div>
@@ -1032,17 +1068,18 @@ function OwnerDashboardView() {
       {/* Zone health + Device summary */}
       <div className="grid grid-cols-2 gap-5">
         <div className="bg-white rounded-2xl p-5 shadow-sm">
-          <h3 className="font-semibold text-gray-800 mb-4">Sức khỏe khu vực trồng</h3>
+          <div className="mb-4"><h3 className="font-semibold text-gray-800">Sức khỏe khu vực trồng</h3><p className="text-xs text-gray-400 mt-0.5">Tổng hợp theo {granularityLabel[granularity].toLowerCase()} · {dateLabel}</p></div>
           <div className="space-y-3">
             {ZONES.map(z => {
-              const c = z.health >= 80 ? "#2E7D32" : z.health >= 65 ? "#F59E0B" : "#EF4444";
+              const historicalHealth = Math.max(45, Math.min(99, z.health - periodOffset + (z.id % 3) - granularityShift));
+              const c = historicalHealth >= 80 ? "#2E7D32" : historicalHealth >= 65 ? "#F59E0B" : "#EF4444";
               return (
                 <div key={z.id} className="flex items-center gap-3">
                   <span className="text-sm font-semibold text-gray-600 w-14 flex-shrink-0">{z.name}</span>
                   <div className="flex-1 bg-gray-100 rounded-full h-2">
-                    <div className="h-2 rounded-full" style={{ width: `${z.health}%`, background: c }} />
+                    <div className="h-2 rounded-full" style={{ width: `${historicalHealth}%`, background: c }} />
                   </div>
-                  <span className="text-sm font-bold w-10 text-right flex-shrink-0" style={{ color: c }}>{z.health}%</span>
+                  <span className="text-sm font-bold w-10 text-right flex-shrink-0" style={{ color: c }}>{historicalHealth}%</span>
                   <span className="text-xs text-gray-400 w-24 flex-shrink-0 truncate">{z.crop}</span>
                 </div>
               );
@@ -1080,16 +1117,22 @@ function OwnerDashboardView() {
 // ── Screen 3: Environment ─────────────────────────────────────────────────
 
 function EnvironmentScreen() {
+  const [granularity, setGranularity] = useState<TimeGranularity>("day");
+  const [periodOffset, setPeriodOffset] = useState(0);
+  const hourlyData = environmentDataForPeriod(granularity, periodOffset);
+  const latest = hourlyData[hourlyData.length - 1];
+  const dateLabel = getPeriodRange(granularity, periodOffset).label;
   const sensors = [
-    { label: "Nhiệt độ KK", value: 27.8, min: 15, max: 40, unit: "°C", color: "#EF4444", ok: false },
-    { label: "Độ ẩm KK", value: 58, min: 0, max: 100, unit: "%", color: "#3B82F6", ok: true },
-    { label: "pH dung dịch", value: 6.3, min: 4, max: 9, unit: "pH", color: "#2E7D32", ok: true },
-    { label: "EC dung dịch", value: 1.95, min: 0, max: 4, unit: "mS/cm", color: "#F59E0B", ok: true },
-    { label: "Ánh sáng", value: 680, min: 0, max: 1000, unit: "μmol", color: "#EAB308", ok: true },
-    { label: "Mực nước bể", value: 72, min: 0, max: 100, unit: "%", color: "#0EA5E9", ok: true },
+    { label: "Nhiệt độ KK", value: latest.tmp, min: 15, max: 40, unit: "°C", color: "#EF4444", ok: latest.tmp <= 27 },
+    { label: "Độ ẩm KK", value: latest.hum, min: 0, max: 100, unit: "%", color: "#3B82F6", ok: true },
+    { label: "pH dung dịch", value: latest.ph, min: 4, max: 9, unit: "pH", color: "#2E7D32", ok: latest.ph >= 5.5 && latest.ph <= 6.5 },
+    { label: "EC dung dịch", value: latest.ec, min: 0, max: 4, unit: "mS/cm", color: "#F59E0B", ok: true },
+    { label: "Ánh sáng", value: latest.lux, min: 0, max: 1000, unit: "μmol", color: "#EAB308", ok: true },
+    { label: "Mực nước bể", value: Math.max(45, 72 - periodOffset * 2), min: 0, max: 100, unit: "%", color: "#0EA5E9", ok: true },
   ];
   return (
     <div className="space-y-5">
+      <TimePeriodNavigator granularity={granularity} offset={periodOffset} onGranularityChange={setGranularity} onOffsetChange={setPeriodOffset} />
       <div className="grid grid-cols-6 gap-4">
         {sensors.map(s => (
           <div key={s.label} className="bg-white rounded-2xl p-4 shadow-sm flex flex-col items-center"
@@ -1105,9 +1148,9 @@ function EnvironmentScreen() {
 
       <div className="grid grid-cols-2 gap-5">
         <div className="bg-white rounded-2xl p-5 shadow-sm">
-          <h3 className="font-semibold text-gray-800 mb-4">Nhiệt độ & Độ ẩm (24h)</h3>
+          <div className="mb-4"><h3 className="font-semibold text-gray-800">Nhiệt độ & Độ ẩm</h3><p className="text-xs text-gray-400 mt-0.5">Theo {granularityLabel[granularity].toLowerCase()} · {dateLabel}</p></div>
           <ResponsiveContainer width="100%" height={200}>
-            <LineChart data={HOURLY} margin={{ top: 4, right: 8, left: -18, bottom: 0 }}>
+            <LineChart data={hourlyData} margin={{ top: 4, right: 8, left: -18, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
               <XAxis dataKey="t" tick={{ fontSize: 11, fill: "#9CA3AF" }} />
               <YAxis tick={{ fontSize: 11, fill: "#9CA3AF" }} />
@@ -1118,9 +1161,9 @@ function EnvironmentScreen() {
           </ResponsiveContainer>
         </div>
         <div className="bg-white rounded-2xl p-5 shadow-sm">
-          <h3 className="font-semibold text-gray-800 mb-4">pH & EC dung dịch (24h)</h3>
+          <div className="mb-4"><h3 className="font-semibold text-gray-800">pH & EC dung dịch</h3><p className="text-xs text-gray-400 mt-0.5">Theo {granularityLabel[granularity].toLowerCase()} · {dateLabel}</p></div>
           <ResponsiveContainer width="100%" height={200}>
-            <LineChart data={HOURLY} margin={{ top: 4, right: 8, left: -18, bottom: 0 }}>
+            <LineChart data={hourlyData} margin={{ top: 4, right: 8, left: -18, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
               <XAxis dataKey="t" tick={{ fontSize: 11, fill: "#9CA3AF" }} />
               <YAxis tick={{ fontSize: 11, fill: "#9CA3AF" }} />
@@ -1134,7 +1177,7 @@ function EnvironmentScreen() {
 
       <div className="bg-white rounded-2xl p-5 shadow-sm">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="font-semibold text-gray-800">Bảng dữ liệu cảm biến theo giờ</h3>
+          <div><h3 className="font-semibold text-gray-800">Bảng dữ liệu cảm biến theo {granularityLabel[granularity].toLowerCase()}</h3><p className="text-xs text-gray-400 mt-0.5">{dateLabel}</p></div>
           <button className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors">
             <Download size={14} /> Xuất CSV
           </button>
@@ -1148,9 +1191,9 @@ function EnvironmentScreen() {
             </tr>
           </thead>
           <tbody>
-            {HOURLY.map((row, i) => (
+            {hourlyData.map((row, i) => (
               <tr key={i} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
-                <td className="py-2.5 px-3 font-semibold text-gray-700">{row.t}</td>
+                <td className="py-2.5 px-3 font-semibold text-gray-700"><span className="block">{row.t}</span><span className="text-[10px] font-normal text-gray-400">{dateLabel}</span></td>
                 <td className="py-2.5 px-3 text-gray-600">{row.tmp}</td>
                 <td className="py-2.5 px-3 text-gray-600">{row.hum}</td>
                 <td className="py-2.5 px-3 text-gray-600">{row.ph}</td>
@@ -2003,14 +2046,27 @@ function TempGroupedBar({ data }: { data: typeof WEEKLY }) {
 // ── Screen 9: Reports ─────────────────────────────────────────────────────
 
 function ReportsScreen() {
+  const [granularity, setGranularity] = useState<TimeGranularity>("week");
+  const [periodOffset, setPeriodOffset] = useState(0);
+  const periodRange = getPeriodRange(granularity, periodOffset).label;
+  const environmentData = environmentDataForPeriod(granularity, periodOffset);
+  const reportData = environmentData.map((row, index) => ({ day: row.t, tb: row.tmp, max: Number((row.tmp + 2.6 + (index % 2) * 0.3).toFixed(1)), min: Number((row.tmp - 2.8 + (index % 3) * 0.2).toFixed(1)), canh_bao: ((index + periodOffset) % 4) + 1 }));
+  const totalAlerts = reportData.reduce((sum, row) => sum + row.canh_bao, 0);
+  const previousData = environmentDataForPeriod(granularity, Math.min(5, periodOffset + 1));
+  const previousTotal = previousData.reduce((sum, _, index) => sum + ((index + periodOffset + 1) % 4) + 1, 0);
+  const baseZoneAlerts = Math.floor(totalAlerts / ZONES.length), remainingZoneAlerts = totalAlerts % ZONES.length;
+  const zoneAlerts = ZONES.map((_, index) => baseZoneAlerts + (index < remainingZoneAlerts ? 1 : 0));
+  const averageTemperature = (reportData.reduce((sum, row) => sum + row.tb, 0) / reportData.length).toFixed(1);
+  const averagePh = (environmentData.reduce((sum, row) => sum + row.ph, 0) / environmentData.length).toFixed(2);
   return (
     <div className="space-y-5">
+      <TimePeriodNavigator granularity={granularity} offset={periodOffset} onGranularityChange={setGranularity} onOffsetChange={setPeriodOffset} />
       <div className="grid grid-cols-4 gap-4">
         {[
-          { l: "Tổng cảnh báo tuần", v: "18", sub: "+3 so với tuần trước", c: "#EF4444", bg: "#FEF2F2" },
-          { l: "Nhiệt độ trung bình", v: "25.7°C", sub: "Trong ngưỡng an toàn", c: "#2E7D32", bg: "#F0FDF4" },
-          { l: "pH trung bình tuần", v: "6.18", sub: "Ổn định — dao động ±0.15", c: "#2E7D32", bg: "#F0FDF4" },
-          { l: "Uptime hệ thống", v: "99.2%", sub: "7 ngày liên tục", c: "#3B82F6", bg: "#EFF6FF" },
+          { l: `Tổng cảnh báo theo ${granularityLabel[granularity].toLowerCase()}`, v: String(totalAlerts), sub: `${totalAlerts >= previousTotal ? "+" : ""}${totalAlerts - previousTotal} so với kỳ trước`, c: "#EF4444", bg: "#FEF2F2" },
+          { l: "Nhiệt độ trung bình", v: `${averageTemperature}°C`, sub: periodRange, c: "#2E7D32", bg: "#F0FDF4" },
+          { l: "pH trung bình", v: averagePh, sub: periodRange, c: "#2E7D32", bg: "#F0FDF4" },
+          { l: "Uptime hệ thống", v: `${(99.7 - periodOffset * 0.12).toFixed(1)}%`, sub: `Trong ${granularityLabel[granularity].toLowerCase()} đã chọn`, c: "#3B82F6", bg: "#EFF6FF" },
         ].map(s => (
           <div key={s.l} className="rounded-2xl p-4 shadow-sm" style={{ background: s.bg }}>
             <div className="text-2xl font-bold mb-0.5" style={{ color: s.c }}>{s.v}</div>
@@ -2024,7 +2080,7 @@ function ReportsScreen() {
         {/* Temperature chart — 60% */}
         <div className="col-span-3 bg-white rounded-2xl p-5 shadow-sm">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="font-semibold text-gray-800">Nhiệt độ theo ngày trong tuần</h3>
+            <div><h3 className="font-semibold text-gray-800">Nhiệt độ theo {granularityLabel[granularity].toLowerCase()}</h3><p className="text-xs text-gray-400 mt-0.5">{periodRange}</p></div>
             <div className="flex items-center gap-4">
               {[{ c: "#FCA5A5", l: "Max" }, { c: "#166534", l: "TB" }, { c: "#BBF7D0", l: "Min" }].map(x => (
                 <span key={x.l} className="flex items-center gap-1.5 text-xs text-gray-500">
@@ -2038,7 +2094,7 @@ function ReportsScreen() {
             </div>
           </div>
           <div style={{ height: 260 }}>
-            <TempGroupedBar data={WEEKLY} />
+            <TempGroupedBar data={reportData} />
           </div>
         </div>
 
@@ -2046,10 +2102,10 @@ function ReportsScreen() {
         <div className="col-span-2 bg-white rounded-2xl p-5 shadow-sm">
           <div className="mb-4">
             <h3 className="font-semibold text-gray-800">Số cảnh báo theo ngày</h3>
-            <p className="text-xs text-gray-400 mt-0.5">Tuần này — tổng 18 cảnh báo</p>
+            <p className="text-xs text-gray-400 mt-0.5">{periodRange} · tổng {totalAlerts} cảnh báo</p>
           </div>
           <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={WEEKLY} margin={{ top: 4, right: 8, left: -18, bottom: 0 }}>
+            <BarChart data={reportData} margin={{ top: 4, right: 8, left: -18, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
               <XAxis dataKey="day" tick={{ fontSize: 11, fill: "#9CA3AF" }} />
               <YAxis tick={{ fontSize: 11, fill: "#9CA3AF" }} />
@@ -2062,7 +2118,7 @@ function ReportsScreen() {
 
       <div className="bg-white rounded-2xl p-5 shadow-sm">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="font-semibold text-gray-800">Hiệu suất khu vực trồng — Tuần 26</h3>
+          <div><h3 className="font-semibold text-gray-800">Hiệu suất khu vực trồng</h3><p className="text-xs text-gray-400 mt-0.5">Dữ liệu từ {periodRange}</p></div>
           <button className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors">
             <Download size={14} /> Xuất PDF
           </button>
@@ -2090,7 +2146,7 @@ function ReportsScreen() {
                 </td>
                 <td className="py-2.5 px-4 text-gray-600">25.8°C</td>
                 <td className="py-2.5 px-4 text-gray-600">6.2</td>
-                <td className="py-2.5 px-4 text-gray-600">{[0, 2, 1, 4, 0, 7, 2][z.id]}</td>
+                <td className="py-2.5 px-4 text-gray-600"><span className={`inline-flex min-w-7 justify-center rounded-full px-2 py-0.5 text-xs font-semibold ${zoneAlerts[z.id - 1] > 0 ? "bg-orange-50 text-orange-700" : "bg-green-50 text-green-700"}`}>{zoneAlerts[z.id - 1] ?? 0}</span></td>
                 <td className="py-2.5 px-4">
                   <span className={`text-xs px-2.5 py-0.5 rounded-full font-semibold ${z.status === "good" ? "bg-green-50 text-green-700" : z.status === "warning" ? "bg-yellow-50 text-yellow-700" : "bg-red-50 text-red-700"}`}>
                     {z.status === "good" ? "Tốt" : z.status === "warning" ? "Cần chú ý" : "Nguy hiểm"}
@@ -3887,7 +3943,10 @@ function OwnerProfileScreen() {
 // ── Screen: Owner Yield Stats ─────────────────────────────────────────────
 
 function OwnerYieldScreen() {
-  const cropData = [
+  const [granularity, setGranularity] = useState<TimeGranularity>("year");
+  const [periodOffset, setPeriodOffset] = useState(0);
+  const periodRange = getPeriodRange(granularity, periodOffset).label;
+  const baseCropData = [
     { zone: "Khu A", crop: "Cải bó xôi", planted: "01/04/2026", harvest: "01/06/2026", kg: 18.4, target: 20, status: "done" },
     { zone: "Khu B", crop: "Xà lách Butter", planted: "15/04/2026", harvest: "15/06/2026", kg: 12.1, target: 15, status: "done" },
     { zone: "Khu C", crop: "Rau muống nước", planted: "01/05/2026", harvest: "15/07/2026", kg: null, target: 22, status: "growing" },
@@ -3896,11 +3955,10 @@ function OwnerYieldScreen() {
     { zone: "Khu F", crop: "Xà lách lô lô đỏ", planted: "25/05/2026", harvest: "10/08/2026", kg: null, target: 14, status: "growing" },
   ];
 
-  const monthlyKg = [
-    { month: "T1", kg: 0 }, { month: "T2", kg: 0 }, { month: "T3", kg: 8.2 },
-    { month: "T4", kg: 14.6 }, { month: "T5", kg: 22.1 }, { month: "T6", kg: 30.5 },
-    { month: "T7", kg: 12.0 }, { month: "T8", kg: 0 },
-  ];
+  const chartLabels = granularity === "day" ? ["00h", "04h", "08h", "12h", "16h", "20h"] : granularity === "week" ? ["T2", "T3", "T4", "T5", "T6", "T7", "CN"] : granularity === "month" ? ["Tuần 1", "Tuần 2", "Tuần 3", "Tuần 4", "Tuần 5"] : Array.from({ length: 12 }, (_, index) => `T${index + 1}`);
+  const scale = granularity === "day" ? 0.08 : granularity === "week" ? 0.22 : granularity === "month" ? 0.55 : 1;
+  const yieldData = chartLabels.map((label, index) => ({ label, kg: Number((Math.max(0, [0, 3.4, 8.2, 14.6, 22.1, 30.5, 12, 18.6, 24.2, 16.8, 28.4, 20.3][index % 12] * scale - periodOffset * 0.7)).toFixed(1)) }));
+  const cropData = baseCropData.map((crop, index) => ({ ...crop, kg: crop.kg == null ? null : Number(Math.max(0, crop.kg * scale - periodOffset * 0.35 + index * 0.1).toFixed(1)), target: Number((crop.target * scale).toFixed(1)) }));
 
   const totalHarvested = cropData.filter(c => c.status === "done").reduce((s, c) => s + (c.kg ?? 0), 0);
   const totalTarget = cropData.reduce((s, c) => s + c.target, 0);
@@ -3913,10 +3971,14 @@ function OwnerYieldScreen() {
     { label: "Đang tăng trưởng", value: "4 lứa", sub: "Thu hoạch dự kiến T7–T8", color: "#7C3AED", bg: "#F5F3FF" },
   ];
 
-  const maxKg = Math.max(...monthlyKg.map(d => d.kg));
+  const maxKg = Math.max(...yieldData.map(d => d.kg));
+  const periodYieldTotal = yieldData.reduce((sum, item) => sum + item.kg, 0);
+  const periodYieldAverage = periodYieldTotal / Math.max(1, yieldData.length);
+  const peakYield = yieldData.reduce((best, item) => item.kg > best.kg ? item : best, yieldData[0]);
 
   return (
-    <div className="max-w-3xl space-y-5">
+    <div className="space-y-5">
+      <TimePeriodNavigator granularity={granularity} offset={periodOffset} onGranularityChange={setGranularity} onOffsetChange={setPeriodOffset} />
       {/* Summary */}
       <div className="grid grid-cols-4 gap-4">
         {summaryCards.map(({ label, value, sub, color, bg }) => (
@@ -3935,36 +3997,36 @@ function OwnerYieldScreen() {
       <div className="bg-white rounded-2xl p-6 shadow-sm">
         <div className="flex items-center justify-between mb-5">
           <div>
-            <h3 className="text-sm font-bold text-gray-800">Sản lượng theo tháng</h3>
-            <p className="text-xs text-gray-400 mt-0.5">Năm 2026 — toàn bộ khu vực</p>
+            <h3 className="text-sm font-bold text-gray-800">Sản lượng theo {granularityLabel[granularity].toLowerCase()}</h3>
+            <p className="text-xs text-gray-400 mt-0.5">{periodRange} · toàn bộ khu vực</p>
           </div>
           <div className="flex items-center gap-2">
             <span className="w-3 h-3 rounded-sm inline-block" style={{ background: "#2E7D32" }} />
             <span className="text-xs text-gray-500">kg thu hoạch</span>
           </div>
         </div>
-        <div className="flex items-end gap-3 h-40">
-          {monthlyKg.map(({ month, kg }) => {
-            const pct = maxKg > 0 ? (kg / maxKg) * 100 : 0;
-            return (
-              <div key={month} className="flex-1 flex flex-col items-center gap-1.5">
-                {kg > 0 && <span className="text-[10px] font-semibold text-gray-500">{kg}</span>}
-                <div className="w-full rounded-t-lg transition-all" style={{
-                  height: `${Math.max(pct, kg > 0 ? 8 : 0)}%`,
-                  background: kg > 0 ? "linear-gradient(180deg,#43A047,#2E7D32)" : "#F3F4F6",
-                  minHeight: kg > 0 ? 6 : 0,
-                }} />
-                <span className="text-[11px] text-gray-400">{month}</span>
-              </div>
-            );
-          })}
+        <div className="grid grid-cols-3 gap-3 mb-5">
+          <div className="rounded-xl bg-green-50 px-4 py-3"><div className="text-[11px] text-green-700">Tổng sản lượng trong kỳ</div><div className="text-lg font-extrabold text-green-800 mt-0.5">{periodYieldTotal.toFixed(1)} kg</div></div>
+          <div className="rounded-xl bg-blue-50 px-4 py-3"><div className="text-[11px] text-blue-700">Trung bình mỗi mốc</div><div className="text-lg font-extrabold text-blue-800 mt-0.5">{periodYieldAverage.toFixed(1)} kg</div></div>
+          <div className="rounded-xl bg-orange-50 px-4 py-3"><div className="text-[11px] text-orange-700">Cao nhất trong kỳ</div><div className="text-lg font-extrabold text-orange-800 mt-0.5">{peakYield.kg.toFixed(1)} kg <span className="text-xs font-semibold">· {peakYield.label}</span></div></div>
+        </div>
+        <div className="h-72 rounded-xl border border-gray-100 bg-gray-50/40 px-2 pt-4">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={yieldData} margin={{ top: 22, right: 18, left: 2, bottom: 8 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
+              <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#6B7280" }} axisLine={{ stroke: "#D1D5DB" }} tickLine={false} />
+              <YAxis domain={[0, Math.max(1, Math.ceil(maxKg * 1.25))]} tick={{ fontSize: 11, fill: "#6B7280" }} axisLine={false} tickLine={false} width={42} unit=" kg" />
+              <Tooltip formatter={(value: number) => [`${Number(value).toFixed(1)} kg`, "Sản lượng"]} labelFormatter={(label) => `Mốc ${label}`} contentStyle={{ borderRadius: 10, border: "1px solid #D1FAE5", fontSize: 12 }} />
+              <Bar dataKey="kg" name="Sản lượng" fill="#2E7D32" radius={[7, 7, 0, 0]} minPointSize={4} label={{ position: "top", fill: "#4B5563", fontSize: 11, formatter: (value: number) => `${Number(value).toFixed(1)} kg` }} />
+            </BarChart>
+          </ResponsiveContainer>
         </div>
       </div>
 
       {/* Crop table */}
       <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-50">
-          <h3 className="text-sm font-bold text-gray-800">Chi tiết từng lứa trồng</h3>
+          <div><h3 className="text-sm font-bold text-gray-800">Chi tiết từng lứa trồng</h3><p className="text-xs text-gray-400 mt-0.5">Số liệu trong kỳ {periodRange}</p></div>
         </div>
         <table className="w-full text-sm">
           <thead>
