@@ -2,13 +2,19 @@ import { Router } from 'express';
 import { nextId, store } from '../data/store.js';
 
 const router = Router();
-const publicUser = (user) => ({
-  id: user.user_id,
-  full_name: user.full_name,
-  email: user.email,
-  role: store.roles.find((role) => role.role_id === user.role_id)?.role_name || 'owner',
-  status: user.status,
-});
+const publicUser = (user) => {
+  const lastActiveAt = user.last_active_at || user.last_login_at || null;
+  const activeAgo = lastActiveAt ? Date.now() - new Date(lastActiveAt).getTime() : Number.POSITIVE_INFINITY;
+  return {
+    id: user.user_id,
+    full_name: user.full_name,
+    email: user.email,
+    role: store.roles.find((role) => role.role_id === user.role_id)?.role_name || 'owner',
+    status: user.status,
+    online: activeAgo <= 15_000,
+    last_active_at: lastActiveAt,
+  };
+};
 
 const roleOf = (user) => store.roles.find((role) => role.role_id === user.role_id)?.role_name;
 const canContact = (viewer, target) => {

@@ -590,7 +590,7 @@ function answerDirectoryQuestion(question, currentUser) {
 
 const sensorLabels = {
   temperature: 'Nhiệt độ', humidity: 'Độ ẩm', ph: 'pH', ec: 'EC',
-  light: 'Ánh sáng', water_level: 'Mực nước',
+  light: 'Ánh sáng', water_level: 'Mực nước', soil_moisture: 'Độ ẩm đất',
 };
 
 const latestReading = (areaId, sensorType) => store.readings
@@ -612,7 +612,7 @@ export function answerSystemDataQuestion(question, currentUser) {
   const selectedAreas = areaMatch
     ? store.areas.filter((area) => areaCodes.includes(normalizeVietnamese(area.area_name).replace(/^khu\s*/, '')))
     : store.areas;
-  const sensorAliases = { temperature: 'nhiet do', humidity: 'do am', water_level: 'muc nuoc', light: 'anh sang', ph: 'ph', ec: 'ec' };
+  const sensorAliases = { temperature: 'nhiet do', humidity: 'do am', water_level: 'muc nuoc', light: 'anh sang', soil_moisture: 'do am dat', ph: 'ph', ec: 'ec' };
   const comparisonTypes = Object.keys(sensorLabels).filter((type) => normalized.includes(sensorAliases[type]));
   const asksHighest = /\b(cao nhat|lon nhat|max|toi da)\b/.test(normalized);
   const asksLowest = /\b(thap nhat|nho nhat|min|toi thieu)\b/.test(normalized);
@@ -687,7 +687,7 @@ export function answerSystemDataQuestion(question, currentUser) {
   const sensorQuestion = !thresholdQuestion && /(cam bien|nhiet do|do am|muc nuoc|anh sang|\bph\b|\bec\b|chi so moi truong)/.test(normalized);
   if (!sensorQuestion && !thresholdQuestion && /(khu vuc|khu trong|vuon hom nay|tinh hinh.*vuon|tinh trang.*vuon|tong quan.*vuon|tong quan.*khu)/.test(normalized)) {
     return selectedAreas.map((area) => {
-      const readings = ['temperature', 'humidity', 'ph', 'ec', 'water_level']
+      const readings = ['temperature', 'humidity', 'light', 'soil_moisture', 'ph', 'ec', 'water_level']
         .map((type) => latestReading(area.area_id, type))
         .filter(Boolean)
         .map((reading) => `${sensorLabels[store.sensors.find((sensor) => sensor.sensor_id === reading.sensor_id)?.sensor_type] || 'Chỉ số'} ${reading.value} ${reading.unit}`);
@@ -752,7 +752,7 @@ export function answerSystemDataQuestion(question, currentUser) {
 
   if (/(nguong|cau hinh nguong)/.test(normalized)) {
     const requestedThresholdTypes = Object.keys(sensorLabels).filter((type) => {
-      const aliases = { temperature: 'nhiet do', humidity: 'do am', water_level: 'muc nuoc', light: 'anh sang', ph: 'ph', ec: 'ec' };
+      const aliases = { temperature: 'nhiet do', humidity: 'do am', water_level: 'muc nuoc', light: 'anh sang', soil_moisture: 'do am dat', ph: 'ph', ec: 'ec' };
       return normalized.includes(aliases[type]);
     });
     const thresholds = store.thresholds.filter((item) => (!areaMatch || selectedAreas.some((area) => area.area_id === item.area_id))

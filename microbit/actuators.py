@@ -1,12 +1,12 @@
-from microbit import pin8, pin12, pin13, pin16
+from microbit import pin2, pin12, pin14, pin15, pin16
 
 from config import RELAY_ACTIVE_LOW
 
-PINS = {
-    'pump': pin8,
-    'grow_light': pin12,
-    'fan': pin16,
-    'dosing_pump': pin13,
+# Relay mini ở P2; hai kênh USB ở P14/P15.
+SINGLE_PINS = {
+    'pump': pin14,
+    'grow_light': pin2,
+    'dosing_pump': pin15,
 }
 
 STATES = {
@@ -25,15 +25,22 @@ def output_value(state):
 
 
 def initialize():
-    for device in PINS:
+    for device in STATES:
         set_state(device, 'OFF')
 
 
 def set_state(device, state):
     normalized = str(state).upper()
-    if device not in PINS or normalized not in ('ON', 'OFF'):
+    if device not in STATES or normalized not in ('ON', 'OFF'):
         return False
-    PINS[device].write_digital(output_value(normalized))
+
+    if device == 'fan':
+        # Quạt OhStem dùng hai chân. Chạy thuận: P16 bật, P12 tắt.
+        pin16.write_digital(1 if normalized == 'ON' else 0)
+        pin12.write_digital(0)
+    else:
+        SINGLE_PINS[device].write_digital(output_value(normalized))
+
     STATES[device] = normalized
     return True
 

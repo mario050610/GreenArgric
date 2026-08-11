@@ -63,6 +63,8 @@ class GatewayConfig:
                 'humidity': os.getenv('FEED_HUMIDITY', 'ga-humidity'),
                 'light': os.getenv('FEED_LIGHT', 'ga-light'),
                 'water_level': os.getenv('FEED_WATER_LEVEL', 'ga-water-level'),
+                'soil_moisture': os.getenv('FEED_SOIL_MOISTURE', 'ga-soil-moisture'),
+                'distance_cm': os.getenv('FEED_DISTANCE', 'ga-distance'),
                 'ph': os.getenv('FEED_PH', 'ga-ph'),
                 'ec': os.getenv('FEED_EC', 'ga-ec'),
             },

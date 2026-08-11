@@ -35,7 +35,7 @@ exit /b 1
 
 :READY
 wsl.exe -e bash "%GA_WSL_ROOT%/scripts/status-web-wsl.sh"
-start "" http://localhost:5173
+start "" http://localhost:5173/?resetAlerts=1
 echo.
 echo Da mo GREEN ARGRIC tai http://localhost:5173
 exit /b 0
