@@ -359,6 +359,24 @@ const PAGE_TITLES: Record<Screen, string> = {
   "user-profile": "Hồ sơ người dùng",
 };
 
+const FEATURE_SEARCH_KEYWORDS: Partial<Record<Screen, string>> = {
+  dashboard: "trang chủ bảng điều khiển số liệu nhanh trạng thái hệ thống",
+  environment: "nhiệt độ độ ẩm ph ec ánh sáng mực nước cảm biến môi trường",
+  devices: "thiết bị máy bơm đèn led quạt relay bật tắt điều khiển lắp đặt sửa chữa bảo trì",
+  history: "dữ liệu cũ biểu đồ nhật ký lịch sử cảm biến",
+  alerts: "cảnh báo bất thường nguy hiểm sự cố vượt ngưỡng xử lý",
+  thresholds: "ngưỡng tối đa tối thiểu tự động hóa cấu hình giới hạn",
+  zones: "vườn khu vườn khu vực trồng cây thêm khu quản lý khu chi tiết",
+  tasks: "công việc nhiệm vụ lịch hẹn sửa chữa bảo trì hiệu chỉnh cảm biến phân công kỹ thuật viên",
+  users: "tài khoản người dùng thêm tài khoản khóa mở khóa cấm xóa chủ vườn kỹ thuật viên",
+  notifications: "chuông email sms cài đặt thông báo",
+  profile: "hồ sơ cá nhân thông tin cá nhân ảnh đại diện ảnh bìa đổi mật khẩu cập nhật mật khẩu",
+  "owner-yield": "năng suất thu hoạch sản lượng thống kê cây trồng",
+  messages: "tin nhắn trò chuyện liên hệ trợ lý ai ollama nhắn chủ vườn kỹ thuật viên quản trị viên",
+  reports: "báo cáo csv tải xuống xuất dữ liệu thống kê",
+  help: "trợ giúp hướng dẫn cách dùng hỗ trợ tính năng",
+};
+
 function Header({ screen, role, onNavigate, onViewUser }: { screen: Screen; role: Role; onNavigate: (screen: Screen) => void; onViewUser: (user: any) => void }) {
   const userName = sessionUserName(role);
   const userInitial = role === "owner" ? "Q" : role === "admin" ? "N" : "K";
@@ -375,7 +393,14 @@ function Header({ screen, role, onNavigate, onViewUser }: { screen: Screen; role
     fetch(`${import.meta.env.VITE_API_URL || "http://localhost:3000"}/message/contacts`, { headers: { authorization: `Bearer ${localStorage.getItem("greenArgricToken")}` } }).then(response => response.ok ? response.json() : []).then(setDirectory);
   }, []);
   const normalizeSearch = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d").replace(/Đ/g, "D").toLowerCase().trim();
-  const searchResults = searchText.trim().length < 2 ? [] : directory.filter(user => normalizeSearch(`${user.full_name} ${user.email}`).includes(normalizeSearch(searchText))).slice(0, 6);
+  const searchQuery = normalizeSearch(searchText);
+  const roleNav = role === "owner" ? OWNER_NAV : role === "admin" ? ADMIN_NAV : TECH_NAV;
+  const featureResults = searchQuery.length < 2 ? [] : roleNav.filter((item: any) => normalizeSearch(`${item.label} ${PAGE_TITLES[item.id as Screen] || ""} ${FEATURE_SEARCH_KEYWORDS[item.id as Screen] || ""}`).includes(searchQuery)).slice(0, 6);
+  const userResults = searchQuery.length < 2 ? [] : directory.filter(user => normalizeSearch(`${user.full_name} ${user.email} ${user.role === "owner" ? "chủ vườn" : user.role === "admin" ? "quản trị viên" : "kỹ thuật viên"}`).includes(searchQuery)).slice(0, 5);
+  const chooseFirstSearchResult = () => {
+    if (featureResults[0]) { onNavigate(featureResults[0].id as Screen); setSearchText(""); }
+    else if (userResults[0]) { onViewUser(userResults[0]); setSearchText(""); }
+  };
   const sendMessage = () => {
     const text = message.trim(); if (!text) return;
     const reply = chatMode === "owner" ? "Tin nhắn đã được gửi đến Chủ vườn Huỳnh Minh Quân." : /nhiệt|temperature/i.test(text) ? "Nhiệt độ hiện tại trong bộ dữ liệu là 27.8°C, vẫn nằm trong ngưỡng cấu hình 22–30°C." : /ph/i.test(text) ? "pH hiện tại là 6.3. Khuyến nghị duy trì trong khoảng 5.8–6.5." : /cảnh báo/i.test(text) ? "Hệ thống đang có 2 cảnh báo chưa xử lý. Bạn nên ưu tiên cảnh báo pH và nhiệt độ." : "Tôi đã ghi nhận. Bạn có thể hỏi về nhiệt độ, pH, cảnh báo hoặc trạng thái thiết bị.";
@@ -390,10 +415,14 @@ function Header({ screen, role, onNavigate, onViewUser }: { screen: Screen; role
         <p className="text-xs text-gray-400">Cập nhật: 29/06/2026 · 10:45:22</p>
       </div>
       <div className="flex items-center gap-3">
-        <div className="relative flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2 w-60">
+        <div className="relative flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2 w-80">
           <Search size={14} className="text-gray-400 flex-shrink-0" />
-          <input value={searchText} onChange={event => setSearchText(event.target.value)} className="bg-transparent text-sm text-gray-600 outline-none w-full placeholder-gray-400" placeholder="Tìm tên tài khoản..." />
-          {searchResults.length > 0 && <div className="absolute left-0 right-0 top-11 z-30 bg-white border border-gray-100 rounded-xl shadow-xl p-1.5">{searchResults.map(user => <button key={user.id} onClick={() => { onViewUser(user); setSearchText(""); }} className="w-full p-2.5 rounded-lg text-left hover:bg-green-50"><div className="text-sm font-semibold text-gray-800">{user.full_name}</div><div className="text-xs text-gray-400">{user.role === "owner" ? "Chủ vườn" : user.role === "admin" ? "Quản trị viên" : "Kỹ thuật viên"} · {user.email}</div></button>)}</div>}
+          <input value={searchText} onChange={event => setSearchText(event.target.value)} onKeyDown={event => { if (event.key === "Enter") chooseFirstSearchResult(); if (event.key === "Escape") setSearchText(""); }} className="bg-transparent text-sm text-gray-600 outline-none w-full placeholder-gray-400" placeholder="Tìm tính năng hoặc tài khoản..." />
+          {searchQuery.length >= 2 && <div className="absolute right-0 top-11 z-30 w-96 max-h-[420px] overflow-auto bg-white border border-gray-100 rounded-xl shadow-xl p-2">
+            {featureResults.length > 0 && <><div className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-400">Tính năng hệ thống</div>{featureResults.map((item: any) => { const Icon = item.Icon; return <button key={`feature-${item.id}`} onClick={() => { onNavigate(item.id as Screen); setSearchText(""); }} className="w-full p-2.5 rounded-lg text-left hover:bg-green-50 flex items-center gap-3"><span className="w-8 h-8 rounded-lg bg-green-50 text-green-700 grid place-items-center flex-shrink-0"><Icon size={16}/></span><span><span className="block text-sm font-semibold text-gray-800">{item.label}</span><span className="block text-xs text-gray-400">Mở trang {PAGE_TITLES[item.id as Screen]}</span></span></button>; })}</>}
+            {userResults.length > 0 && <><div className="px-2 pt-3 pb-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-400">Tài khoản</div>{userResults.map(user => <button key={`user-${user.id}`} onClick={() => { onViewUser(user); setSearchText(""); }} className="w-full p-2.5 rounded-lg text-left hover:bg-blue-50"><div className="text-sm font-semibold text-gray-800">{user.full_name}</div><div className="text-xs text-gray-400">{user.role === "owner" ? "Chủ vườn" : user.role === "admin" ? "Quản trị viên" : "Kỹ thuật viên"} · {user.email}</div></button>)}</>}
+            {featureResults.length === 0 && userResults.length === 0 && <div className="p-4 text-center"><Search size={20} className="mx-auto text-gray-300 mb-2"/><div className="text-sm font-semibold text-gray-600">Không tìm thấy kết quả</div><div className="text-xs text-gray-400 mt-1">Thử nhập tên trang, chức năng hoặc tài khoản khác.</div></div>}
+          </div>}
         </div>
         <button onClick={() => onNavigate("messages")} className="relative w-10 h-10 rounded-xl bg-gray-50 flex items-center justify-center hover:bg-gray-100 transition-colors" title="Tin nhắn và trợ lý AI"><MessageCircle size={17} className="text-gray-600" /></button>
         <button onClick={() => { setNotificationsOpen(!notificationsOpen); setUnread(0); }} className="relative w-10 h-10 rounded-xl bg-gray-50 flex items-center justify-center hover:bg-gray-100 transition-colors">

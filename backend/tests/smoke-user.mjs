@@ -217,6 +217,7 @@ const ownerFollowUpResponse = await fetch(`${baseUrl}/ai/chat`, { method: 'POST'
 const ownerFollowUp = await ownerFollowUpResponse.json();
 if (!ownerFollowUpResponse.ok || ownerFollowUp.provider !== 'system' || !ownerFollowUp.reply.includes('Huỳnh Minh Quân') || ownerFollowUp.reply.includes('Nguồn tham khảo') || ownerFollowUp.reply.includes('http')) throw new Error(`Owner follow-up failed: ${ownerFollowUpResponse.status} ${JSON.stringify(ownerFollowUp)}`);
 if (!ownerFollowUp.reply.includes('Nguyễn Thúy Ái') || !ownerFollowUp.reply.includes('Trần Thị Nhi')) throw new Error(`Owner cannot see other owners in closed system: ${JSON.stringify(ownerFollowUp)}`);
+if (!ownerFollowUp.reply.includes('\n- Huỳnh Minh Quân') || !ownerFollowUp.reply.includes('\n- Nguyễn Thúy Ái') || !ownerFollowUp.reply.includes('\n- Trần Thị Nhi')) throw new Error(`Directory entries must be displayed one account per line: ${JSON.stringify(ownerFollowUp)}`);
 const ownerContactsResponse = await fetch(`${baseUrl}/message/contacts`, { headers: ownerHeaders });
 const ownerContacts = await ownerContactsResponse.json();
 if (!ownerContactsResponse.ok || !ownerContacts.some((contact) => contact.role === 'owner') || !ownerContacts.some((contact) => contact.role === 'admin') || !ownerContacts.some((contact) => contact.role === 'technician')) throw new Error(`Owner contact ACL failed: ${JSON.stringify(ownerContacts)}`);
@@ -230,6 +231,10 @@ const areaStatusResponse = await fetch(`${baseUrl}/ai/chat`, { method: 'POST', h
 const areaStatus = await areaStatusResponse.json();
 if (!areaStatusResponse.ok || areaStatus.source !== 'green-argric-data' || !'ABCDEFGHIJKL'.split('').every((code) => areaStatus.reply.includes(`Khu ${code}`)) || areaStatus.reply.includes('Nguồn tham khảo') || areaStatus.reply.includes('http')) throw new Error(`Area status AI query failed: ${areaStatusResponse.status} ${JSON.stringify(areaStatus)}`);
 if (!areaStatus.reply.includes('Nhiệt độ 25.8') || !areaStatus.reply.includes('Nhiệt độ 24.7') || !areaStatus.reply.includes('pH 6.8')) throw new Error(`Area readings are not distinct: ${JSON.stringify(areaStatus)}`);
+if (!areaStatus.reply.includes('Khu A:\n- Cây trồng: Rau muống.') || !areaStatus.reply.includes('\n- Trạng thái: Đang hoạt động.') || !areaStatus.reply.includes('\n- Chỉ số:') || !areaStatus.reply.includes('\n- Cảnh báo:') || !areaStatus.reply.includes('\n\nKhu B:')) throw new Error(`Area overview must separate every field and area block: ${JSON.stringify(areaStatus)}`);
+const highestWaterResponse = await fetch(`${baseUrl}/ai/chat`, { method: 'POST', headers: ownerHeaders, body: JSON.stringify({ message: 'khu vực trồng nào đang có mực nước cao nhất', history: [] }) });
+const highestWater = await highestWaterResponse.json();
+if (!highestWaterResponse.ok || highestWater.provider !== 'system' || !highestWater.reply.includes('Khu H') || !highestWater.reply.includes('78 %') || highestWater.reply.includes('Khu A:') || highestWater.reply.split('\n').length !== 1) throw new Error(`Highest water comparison must return only the matching area: ${JSON.stringify(highestWater)}`);
 const cropResponse = await fetch(`${baseUrl}/ai/chat`, { method: 'POST', headers: ownerHeaders, body: JSON.stringify({ message: 'Khu E đang trồng gì?' }) });
 const cropResult = await cropResponse.json();
 if (!cropResponse.ok || cropResult.source !== 'green-argric-data' || !cropResult.reply.includes('Khu E: đang trồng Cà chua bi') || cropResult.reply.includes('Nguồn tham khảo') || cropResult.reply.includes('http')) throw new Error(`Area crop query failed: ${JSON.stringify(cropResult)}`);

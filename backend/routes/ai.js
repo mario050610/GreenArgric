@@ -547,7 +547,7 @@ function answerDirectoryQuestion(question, currentUser) {
   const asksContact = /(can lien he ai|lien he ai|ho tro lien he|thong tin lien he)/.test(normalized);
   if (asksContact && !/(chu vuon|owner|ky thuat|technician|ktv)/.test(normalized)) {
     const admins = store.users.filter((user) => roleOfUser(user) === 'admin' && user.status === 'active');
-    return admins.length ? `Bạn có thể liên hệ quản trị viên: ${admins.map((user) => `${user.full_name} (${user.email})`).join('; ')}.` : 'Hiện chưa có quản trị viên đang hoạt động để liên hệ.';
+    return admins.length ? `Bạn có thể liên hệ quản trị viên:\n${admins.map((user) => `- ${user.full_name} (${user.email})`).join('\n')}` : 'Hiện chưa có quản trị viên đang hoạt động để liên hệ.';
   }
   const asksIdentity = /(ten gi|la ai|thong tin|danh sach|co nhung ai|bao nhieu)/.test(normalized)
     || /^(con\s+)?(quan tri vien|admin|chu vuon|owner|ky thuat vien|technician|ktv)\??$/.test(normalized.trim());
@@ -563,7 +563,7 @@ function answerDirectoryQuestion(question, currentUser) {
   const roleLabel = requestedRole === 'admin' ? 'Quản trị viên' : requestedRole === 'owner' ? 'Chủ vườn' : 'Kỹ thuật viên';
   const users = store.users.filter((user) => user.status === 'active' && roleOfUser(user) === requestedRole && canViewContact(currentUser, user));
   if (!users.length) return `Bạn không có quyền xem thông tin ${roleLabel.toLowerCase()} khác.`;
-  return `${roleLabel} có thể liên hệ: ${users.map((user) => `${user.full_name} (${user.email}), ${user.status === 'active' ? 'đang hoạt động' : user.status}`).join('; ')}.`;
+  return `${roleLabel} có thể liên hệ:\n${users.map((user) => `- ${user.full_name} (${user.email}), ${user.status === 'active' ? 'đang hoạt động' : user.status}.`).join('\n')}`;
 }
 
 const sensorLabels = {
@@ -590,6 +590,22 @@ export function answerSystemDataQuestion(question, currentUser) {
   const selectedAreas = areaMatch
     ? store.areas.filter((area) => areaCodes.includes(normalizeVietnamese(area.area_name).replace(/^khu\s*/, '')))
     : store.areas;
+  const sensorAliases = { temperature: 'nhiet do', humidity: 'do am', water_level: 'muc nuoc', light: 'anh sang', ph: 'ph', ec: 'ec' };
+  const comparisonTypes = Object.keys(sensorLabels).filter((type) => normalized.includes(sensorAliases[type]));
+  const asksHighest = /\b(cao nhat|lon nhat|max|toi da)\b/.test(normalized);
+  const asksLowest = /\b(thap nhat|nho nhat|min|toi thieu)\b/.test(normalized);
+
+  // So sánh cực trị phải được xử lý trước mọi nhánh tổng quan/liệt kê. Nhờ đó
+  // câu hỏi "khu nào ... cao nhất" chỉ trả khu đạt cực trị, không trả cả bảng.
+  if ((asksHighest || asksLowest) && comparisonTypes.length === 1) {
+    const sensorType = comparisonTypes[0];
+    const comparable = selectedAreas.map((area) => ({ area, reading: latestReading(area.area_id, sensorType) }))
+      .filter((item) => item.reading && Number.isFinite(Number(item.reading.value)));
+    if (!comparable.length) return `Chưa có dữ liệu ${sensorLabels[sensorType].toLowerCase()} của các khu vực trồng.`;
+    const targetValue = (asksHighest ? Math.max : Math.min)(...comparable.map((item) => Number(item.reading.value)));
+    const matches = comparable.filter((item) => Number(item.reading.value) === targetValue);
+    return `${matches.map((item) => `${item.area.area_name} đang trồng ${item.area.crop_type}`).join(' và ')} có ${sensorLabels[sensorType].toLowerCase()} ${asksHighest ? 'cao nhất' : 'thấp nhất'}: ${matches[0].reading.value} ${matches[0].reading.unit}.`;
+  }
 
   if (/(bao nhieu|so luong|tong so).*(khu vuon|khu vuc|khu trong)|(?:khu vuon|khu vuc|khu trong).*(bao nhieu|so luong|tong so)/.test(normalized)) {
     const areaNames = store.areas.map((area) => area.area_name).join(', ');
@@ -654,28 +670,17 @@ export function answerSystemDataQuestion(question, currentUser) {
         .filter(Boolean)
         .map((reading) => `${sensorLabels[store.sensors.find((sensor) => sensor.sensor_id === reading.sensor_id)?.sensor_type] || 'Chỉ số'} ${reading.value} ${reading.unit}`);
       const openAlerts = store.alerts.filter((alert) => alert.area_id === area.area_id && alert.status === 'open');
-      return `- ${area.area_name}: trồng ${area.crop_type}, trạng thái ${area.status === 'active' ? 'đang hoạt động' : 'đang bảo trì'}; ${readings.length ? readings.join(', ') : 'chưa có dữ liệu cảm biến'}; ${openAlerts.length ? `${openAlerts.length} cảnh báo đang mở (${openAlerts.map((alert) => alert.title).join(', ')})` : 'không có cảnh báo đang mở'}.`;
-    }).join('\n');
+      return `${area.area_name}:\n- Cây trồng: ${area.crop_type}.\n- Trạng thái: ${area.status === 'active' ? 'Đang hoạt động' : 'Đang bảo trì'}.\n- Chỉ số: ${readings.length ? readings.join(', ') : 'Chưa có dữ liệu cảm biến'}.\n- Cảnh báo: ${openAlerts.length ? `${openAlerts.length} cảnh báo đang mở (${openAlerts.map((alert) => alert.title).join(', ')})` : 'Không có cảnh báo đang mở'}.`;
+    }).join('\n\n');
   }
 
   if (sensorQuestion) {
     const requestedTypes = Object.keys(sensorLabels).filter((type) => {
-      const aliases = { temperature: 'nhiet do', humidity: 'do am', water_level: 'muc nuoc', light: 'anh sang', ph: 'ph', ec: 'ec' };
-      return normalized.includes(aliases[type]);
+      return normalized.includes(sensorAliases[type]);
     });
     const types = requestedTypes.length ? requestedTypes : Object.keys(sensorLabels);
     if (/(bao nhieu|so luong|tong so).*cam bien|cam bien.*(bao nhieu|so luong|tong so)/.test(normalized)) {
       return selectedAreas.map((area) => `- ${area.area_name}: có ${store.sensors.filter((sensor) => sensor.area_id === area.area_id).length} cảm biến.`).join('\n');
-    }
-    const asksHighest = /(cao nhat|lon nhat|max|toi da)/.test(normalized);
-    const asksLowest = /(thap nhat|nho nhat|min|toi thieu)/.test(normalized);
-    if ((asksHighest || asksLowest) && types.length === 1) {
-      const comparable = selectedAreas.map((area) => ({ area, reading: latestReading(area.area_id, types[0]) }))
-        .filter((item) => item.reading && Number.isFinite(Number(item.reading.value)));
-      if (!comparable.length) return `Chưa có dữ liệu ${sensorLabels[types[0]].toLowerCase()} của các khu vực trồng.`;
-      const targetValue = (asksHighest ? Math.max : Math.min)(...comparable.map((item) => Number(item.reading.value)));
-      const matches = comparable.filter((item) => Number(item.reading.value) === targetValue);
-      return `${matches.map((item) => `${item.area.area_name} đang trồng ${item.area.crop_type}`).join(' và ')} có ${sensorLabels[types[0]].toLowerCase()} ${asksHighest ? 'cao nhất' : 'thấp nhất'}: ${matches[0].reading.value} ${matches[0].reading.unit}.`;
     }
     return selectedAreas.map((area) => {
       const values = types.map((type) => latestReading(area.area_id, type)).filter(Boolean)
