@@ -423,6 +423,13 @@ const NOTIFICATION_TEMPLATES: Array<Omit<HeaderNotification, "id" | "createdAt" 
   { title: "Gateway đã kết nối lại", detail: "Mở quản lý thiết bị để kiểm tra trạng thái kết nối mới nhất.", target: "devices" },
   { title: "Khu E cần được theo dõi", detail: "Mở khu vực trồng để xem sức khỏe và dữ liệu hiện tại của Khu E.", target: "zones" },
   { title: "Có dữ liệu cảm biến mới", detail: "Mở chỉ số môi trường để xem lần cập nhật gần nhất.", target: "environment" },
+  { title: "Mực nước Khu C đang thấp", detail: "Kiểm tra số đo mực nước và cảnh báo đang mở của Khu C.", target: "alerts" },
+  { title: "Máy bơm dinh dưỡng A đã dừng", detail: "Mở quản lý thiết bị để xem chế độ và thời điểm chạy gần nhất.", target: "devices" },
+  { title: "Đến lịch kiểm tra đèn LED Khu B", detail: "Xem nội dung bảo trì và kỹ thuật viên được phân công.", target: "tasks" },
+  { title: "Sản lượng Khu H đã được cập nhật", detail: "Mở thống kê năng suất để đối chiếu thực tế với mục tiêu.", target: "owner-yield" },
+  { title: "Có báo cáo tuần mới", detail: "Mở báo cáo để xem khoảng thời gian, biểu đồ và dữ liệu khu vực.", target: "reports" },
+  { title: "Ngưỡng độ ẩm Khu D đã thay đổi", detail: "Mở cấu hình ngưỡng để kiểm tra giới hạn mới nhất.", target: "thresholds" },
+  { title: "Thông tin Khu L vừa được cập nhật", detail: "Mở khu vực trồng để xem cây trồng, sức khỏe và người quản lý.", target: "zones" },
 ];
 
 function Header({ screen, role, onNavigate, onViewUser }: { screen: Screen; role: Role; onNavigate: (screen: Screen) => void; onViewUser: (user: any) => void }) {
@@ -435,7 +442,7 @@ function Header({ screen, role, onNavigate, onViewUser }: { screen: Screen; role
   const [notifications, setNotifications] = useState<HeaderNotification[]>(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(notificationStorageKey) || "null");
-      if (Array.isArray(saved) && saved.length) return saved;
+      if (Array.isArray(saved) && saved.length) return saved.filter((item: HeaderNotification, index: number, rows: HeaderNotification[]) => rows.findIndex(candidate => candidate.title === item.title) === index).slice(0, 20);
     } catch { /* Khởi tạo lại khi dữ liệu cũ không hợp lệ. */ }
     const now = Date.now();
     return NOTIFICATION_TEMPLATES.slice(0, 3).map((item, index) => ({
@@ -455,11 +462,13 @@ function Header({ screen, role, onNavigate, onViewUser }: { screen: Screen; role
     localStorage.setItem(notificationStorageKey, JSON.stringify(notifications.slice(0, 20)));
   }, [notificationStorageKey, notifications]);
   useEffect(() => {
-    let templateIndex = 3;
     const timer = window.setInterval(() => {
-      const template = NOTIFICATION_TEMPLATES[templateIndex % NOTIFICATION_TEMPLATES.length];
-      templateIndex += 1;
-      setNotifications(items => [{ ...template, id: `auto-${Date.now()}`, createdAt: new Date().toISOString(), read: false }, ...items].slice(0, 20));
+      setNotifications(items => {
+        const existingTitles = new Set(items.map(item => item.title));
+        const template = NOTIFICATION_TEMPLATES.find(candidate => !existingTitles.has(candidate.title));
+        if (!template) return items;
+        return [{ ...template, id: `auto-${Date.now()}`, createdAt: new Date().toISOString(), read: false }, ...items].slice(0, 20);
+      });
     }, 90_000);
     return () => window.clearInterval(timer);
   }, []);
