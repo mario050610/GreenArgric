@@ -4901,7 +4901,7 @@ function LogoScreen() {
   );
 }
 
-function UserDirectoryProfile({ user, onMessage }: { user: any; onMessage: (user: any) => void }) {
+function UserDirectoryProfile({ user, onMessage, onBack }: { user: any; onMessage: (user: any) => void; onBack: () => void }) {
   const [avatarUrl, setAvatarUrl] = useState("");
   const [coverUrl, setCoverUrl] = useState("");
   useEffect(() => {
@@ -4912,7 +4912,7 @@ function UserDirectoryProfile({ user, onMessage }: { user: any; onMessage: (user
   if (!user) return <div className="bg-white rounded-2xl p-10 text-center text-gray-500">Chưa chọn tài khoản để xem hồ sơ.</div>;
   const roleLabel = user.role === "owner" ? "Chủ vườn" : user.role === "admin" ? "Quản trị viên" : "Kỹ thuật viên";
   const initials = String(user.full_name || "?").split(" ").slice(-2).map((part: string) => part[0]).join("").toUpperCase();
-  return <div className="max-w-3xl mx-auto bg-white rounded-2xl shadow-sm overflow-hidden">
+  return <div className="max-w-3xl mx-auto"><button onClick={onBack} className="mb-4 px-4 py-2.5 rounded-xl bg-white border border-gray-200 text-gray-700 text-sm font-semibold inline-flex items-center gap-2 hover:border-green-300 hover:text-green-700 shadow-sm"><ChevronLeft size={17}/>Quay lại</button><div className="bg-white rounded-2xl shadow-sm overflow-hidden">
     <div className="h-44 bg-gradient-to-r from-green-900 to-green-600 relative overflow-hidden">
       {coverUrl && <img src={coverUrl} alt={`Ảnh bìa của ${user.full_name}`} className="absolute inset-0 w-full h-full object-cover" />}
       <div className="absolute inset-0 bg-gradient-to-r from-green-950/35 to-green-700/10" />
@@ -4935,7 +4935,7 @@ function UserDirectoryProfile({ user, onMessage }: { user: any; onMessage: (user
       </div>
       <div className="mt-5 p-4 rounded-xl border border-green-100 bg-green-50 text-sm text-green-800">Đây là hồ sơ thành viên trong hệ thống GREEN ARGRIC khép kín. Bạn có thể liên hệ trực tiếp bằng nút Nhắn tin.</div>
     </div>
-  </div>;
+  </div></div>;
 }
 
 function MessageText({ text }: { text: string }) {
@@ -4995,7 +4995,48 @@ function HelpScreen({ role, onNavigate }: { role: Role; onNavigate: (screen: Scr
     { title: "Thêm khu vực và điều khiển thiết bị", screen: "zones" as Screen, steps: ["Mở Khu vực trồng và nhấn Thêm khu vực trồng nếu cần tạo khu mới.", "Nhập tên khu, cây trồng, vị trí hoặc diện tích và mô tả rồi lưu.", "Mở Điều khiển thiết bị, chọn đúng khu vực và thiết bị.", "Chọn chế độ phù hợp rồi bật hoặc tắt; kiểm tra thông báo xác nhận sau thao tác."] },
     { title: "Cấu hình cảnh báo và xem báo cáo", screen: "thresholds" as Screen, steps: ["Mở Cấu hình ngưỡng và chọn khu vực.", "Nhập giới hạn dưới, giới hạn trên và bật các chỉ số cần giám sát.", "Nhấn Lưu cấu hình; theo dõi chuông thông báo khi có chỉ số bất thường.", "Mở Thống kê năng suất hoặc Báo cáo để xem dữ liệu và tải tệp CSV."] },
   ];
-  return <div className="grid grid-cols-[1fr_280px] gap-5 items-start"><div className="bg-white rounded-2xl p-6 shadow-sm"><h2 className="text-xl font-bold">Hướng dẫn sử dụng từng bước</h2><p className="text-sm text-gray-500 mt-1 mb-5">Chọn một nội dung và làm lần lượt theo các bước dành cho vai trò hiện tại.</p><div className="space-y-4">{guides.map((guide,index) => <div key={guide.title} className="p-5 rounded-2xl border border-gray-100 bg-gray-50"><div className="flex items-center gap-3 mb-3"><div className="w-9 h-9 rounded-full bg-green-700 text-white grid place-items-center font-bold flex-shrink-0">{index+1}</div><h3 className="font-bold text-gray-800 text-base">{guide.title}</h3></div><ol className="ml-12 space-y-2">{guide.steps.map((step,stepIndex) => <li key={step} className="text-sm text-gray-600 flex gap-2"><span className="font-bold text-green-700 flex-shrink-0">Bước {stepIndex+1}:</span><span>{step}</span></li>)}</ol><div className="ml-12 mt-4"><button onClick={() => onNavigate(guide.screen)} className="px-4 py-2 rounded-xl bg-green-50 text-green-700 text-sm font-semibold hover:bg-green-100">Mở trang thực hiện <ChevronRight size={14} className="inline ml-1"/></button></div></div>)}</div></div><div className="bg-green-800 rounded-2xl p-6 text-white sticky top-5"><HelpCircle size={32}/><h3 className="text-lg font-bold mt-4">Cần hỗ trợ thêm?</h3><p className="text-sm text-green-100 mt-2 leading-6">Mở Trung tâm tin nhắn để hỏi quản trị viên, kỹ thuật viên hoặc Trợ lý AI. Hãy mô tả rõ khu vực, thiết bị và lỗi đang gặp.</p><button onClick={() => onNavigate("messages")} className="mt-5 w-full py-2.5 rounded-xl bg-white text-green-800 font-semibold text-sm">Mở trung tâm tin nhắn</button></div></div>;
+  const commonFaqs = [
+    { question: "Tôi xem thông báo mới ở đâu?", answer: "Nhấn biểu tượng chuông ở góc phải hoặc mở mục Cảnh báo để xem đầy đủ nội dung, mức độ và khu vực phát sinh." },
+    { question: "Làm sao biết mình đang quản lý hoặc phụ trách khu nào?", answer: "Xem dòng Khu vực quản lý hoặc Khu vực phụ trách dưới vai trò ở thanh bên. Trong trang Khu vực trồng, dùng thẻ Khu vực trồng của bạn để lọc nhanh." },
+    { question: "Tại sao tôi chỉ xem được Chi tiết mà không có nút Quản lý?", answer: "Bạn chỉ được quản lý khu vực đã phân công. Các khu vực khác vẫn cho xem thông tin nhưng không cho sửa hoặc điều khiển." },
+    { question: "Dữ liệu cảm biến không cập nhật thì làm gì?", answer: "Kiểm tra nguồn điện, cáp kết nối, trạng thái gateway và MQTT; sau đó mở Chỉ số môi trường để kiểm tra thời gian nhận dữ liệu gần nhất. Nếu vẫn lỗi, gửi tin nhắn cho kỹ thuật viên." },
+    { question: "Tại sao thiết bị không bật hoặc tắt được?", answer: "Kiểm tra thiết bị có thuộc khu vực bạn quản lý, gateway có trực tuyến và thiết bị có ở chế độ cho phép điều khiển. Sau đó thử lại và xem thông báo xác nhận." },
+    { question: "Cảnh báo được tạo khi nào?", answer: "Cảnh báo xuất hiện khi dữ liệu cảm biến vượt cấu hình ngưỡng đang áp dụng hoặc hệ thống phát hiện thiết bị, kết nối có trạng thái bất thường." },
+    { question: "Tôi có thể nhắn tin cho ai?", answer: "Mở Tin nhắn để trao đổi hai chiều với các thành viên trong hệ thống hoặc chọn Trợ lý AI để hỏi dữ liệu nội bộ và kiến thức thông thường." },
+    { question: "Trợ lý AI có nhớ câu hỏi trước không?", answer: "Có. Các câu hỏi nối tiếp như “mô tả chi tiết” sẽ kế thừa chủ đề gần nhất; khi bạn hỏi sang một chủ đề độc lập, trợ lý sẽ bắt đầu ngữ cảnh mới." },
+    { question: "Làm sao xóa lịch sử trò chuyện?", answer: "Mở đúng cuộc trò chuyện hoặc thẻ Trợ lý AI, sau đó nhấn Xóa cuộc trò chuyện và xác nhận." },
+    { question: "Tôi đổi mật khẩu và ảnh hồ sơ ở đâu?", answer: "Mở Hồ sơ cá nhân để cập nhật mật khẩu, ảnh đại diện và ảnh bìa của chính tài khoản đang đăng nhập." },
+    { question: "Làm sao tải báo cáo hoặc tệp CSV?", answer: "Mở Báo cáo hoặc Thống kê năng suất, chọn phạm vi dữ liệu rồi nhấn nút xuất tệp. Tệp sẽ được tải về máy của bạn." },
+    { question: "Tại sao một số chức năng không xuất hiện?", answer: "Thanh điều hướng và nút thao tác thay đổi theo vai trò, khu vực được phân công và trạng thái tài khoản. Hãy kiểm tra vai trò đã chọn khi đăng nhập." },
+  ];
+  const roleFaqs = role === "admin" ? [
+    { question: "Làm sao tạo tài khoản mới?", answer: "Mở Người dùng, nhấn Thêm tài khoản, nhập đủ thông tin, chọn Chủ vườn hoặc Kỹ thuật viên rồi lưu. Tài khoản được lưu để sử dụng cho các lần đăng nhập sau." },
+    { question: "Làm sao khóa, cấm, mở lại hoặc xóa tài khoản?", answer: "Trong danh sách Người dùng, chọn biểu tượng thao tác tương ứng ở đúng tài khoản. Tài khoản bị khóa hoặc cấm sẽ không thể đăng nhập cho đến khi được mở lại." },
+    { question: "Làm sao phân công khu vực và công việc?", answer: "Chỉnh chủ vườn quản lý trong Khu vực trồng; tạo hoặc cập nhật nhiệm vụ và kỹ thuật viên thực hiện trong Công việc / Bảo trì." },
+    { question: "Hoạt động mới có xuất hiện trên Tổng quan không?", answer: "Có. Các thao tác như tạo tài khoản, cập nhật ngưỡng và xử lý bảo trì được đưa vào danh sách Hoạt động gần đây." },
+  ] : role === "tech" ? [
+    { question: "Tôi xem công việc được giao ở đâu?", answer: "Mở Công việc / Bảo trì. Hệ thống chỉ hiển thị lịch và nhiệm vụ được phân công cho tài khoản kỹ thuật viên của bạn." },
+    { question: "Làm sao cập nhật kết quả sửa chữa?", answer: "Chọn Xử lý ở công việc tương ứng, cập nhật trạng thái rồi ghi đầy đủ nguyên nhân, thao tác, linh kiện và kết quả trong Nhật ký sửa chữa." },
+    { question: "Tôi có được điều khiển mọi thiết bị không?", answer: "Không. Bạn chỉ được thao tác thiết bị thuộc khu vực có công việc hoặc phạm vi kỹ thuật đã được phân công." },
+    { question: "Làm sao ghi nhận hiệu chỉnh cảm biến?", answer: "Mở thẻ Hiệu chỉnh cảm biến, chọn đúng khu vực và cảm biến, nhập giá trị chuẩn cùng giá trị đo rồi lưu kết quả." },
+  ] : [
+    { question: "Làm sao thêm khu vực trồng mới?", answer: "Mở Khu vực trồng, nhấn Thêm khu vực trồng, nhập tên khu, cây trồng, vị trí hoặc diện tích và mô tả rồi lưu." },
+    { question: "Tôi có thể quản lý khu vực của chủ vườn khác không?", answer: "Không. Bạn có thể xem chi tiết và tên người quản lý, nhưng chỉ được sửa và điều khiển các khu vực đã phân công cho mình." },
+    { question: "Làm sao thay đổi cấu hình ngưỡng?", answer: "Mở Cấu hình ngưỡng, chọn khu vực của bạn, nhập giới hạn dưới và trên cho từng chỉ số, bật áp dụng rồi nhấn lưu." },
+    { question: "Tôi theo dõi lịch kỹ thuật viên đến vườn ở đâu?", answer: "Mở Công việc / Bảo trì để xem thiết bị, nội dung, ngày thực hiện và kỹ thuật viên được phân công cho khu vực của bạn." },
+  ];
+  const faqs = [...roleFaqs, ...commonFaqs];
+  return <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_380px] gap-5 items-start">
+    <div className="bg-white rounded-2xl p-5 shadow-sm">
+      <h2 className="text-xl font-bold">Hướng dẫn sử dụng từng bước</h2>
+      <p className="text-sm text-gray-500 mt-1 mb-5">Chọn một nội dung và làm lần lượt theo các bước dành cho vai trò hiện tại.</p>
+      <div className="space-y-4">{guides.map((guide,index) => <div key={guide.title} className="p-4 rounded-2xl border border-gray-100 bg-gray-50"><div className="flex items-center gap-3 mb-3"><div className="w-9 h-9 rounded-full bg-green-700 text-white grid place-items-center font-bold flex-shrink-0">{index+1}</div><h3 className="font-bold text-gray-800 text-base">{guide.title}</h3></div><ol className="ml-12 space-y-2">{guide.steps.map((step,stepIndex) => <li key={step} className="text-sm text-gray-600 flex gap-2"><span className="font-bold text-green-700 flex-shrink-0">Bước {stepIndex+1}:</span><span>{step}</span></li>)}</ol><div className="ml-12 mt-4"><button onClick={() => onNavigate(guide.screen)} className="px-4 py-2 rounded-xl bg-green-50 text-green-700 text-sm font-semibold hover:bg-green-100">Mở trang thực hiện <ChevronRight size={14} className="inline ml-1"/></button></div></div>)}</div>
+    </div>
+    <aside className="space-y-5 xl:sticky xl:top-5">
+      <div className="bg-green-800 rounded-2xl p-6 text-white"><HelpCircle size={32}/><h3 className="text-lg font-bold mt-4">Cần hỗ trợ thêm?</h3><p className="text-sm text-green-100 mt-2 leading-6">Mở Trung tâm tin nhắn để hỏi quản trị viên, kỹ thuật viên hoặc Trợ lý AI. Hãy mô tả rõ khu vực, thiết bị và lỗi đang gặp.</p><button onClick={() => onNavigate("messages")} className="mt-5 w-full py-2.5 rounded-xl bg-white text-green-800 font-semibold text-sm">Mở trung tâm tin nhắn</button></div>
+      <div className="bg-white rounded-2xl p-5 shadow-sm"><div className="flex items-center gap-2 mb-1"><HelpCircle size={20} className="text-green-700"/><h3 className="text-lg font-bold text-gray-800">Câu hỏi thường gặp</h3></div><p className="text-xs text-gray-500 mb-4">Nhấn vào từng câu hỏi để xem hướng dẫn.</p><div className="space-y-2 max-h-[620px] overflow-y-auto pr-1">{faqs.map((faq) => <details key={faq.question} className="group rounded-xl border border-gray-100 bg-gray-50 open:bg-green-50 open:border-green-100"><summary className="cursor-pointer list-none px-4 py-3 text-sm font-semibold text-gray-700 flex items-center justify-between gap-3"><span>{faq.question}</span><ChevronRight size={16} className="text-green-700 flex-shrink-0 transition-transform group-open:rotate-90"/></summary><p className="px-4 pb-4 text-sm text-gray-600 leading-6">{faq.answer}</p></details>)}</div></div>
+    </aside>
+  </div>;
 }
 
 // ── App ───────────────────────────────────────────────────────────────────
@@ -5013,6 +5054,22 @@ export default function App() {
     urlScreen && urlRole ? urlRole : null
   );
   const [viewedUser, setViewedUser] = useState<any>(null);
+  const [profileReturnScreen, setProfileReturnScreen] = useState<Screen>("users");
+  const openUserProfile = (user: any, returnScreen: Screen) => {
+    setViewedUser(user);
+    setProfileReturnScreen(returnScreen);
+    window.history.pushState({ greenArgricProfile: true }, "");
+    setScreen("user-profile");
+  };
+  const closeUserProfile = () => {
+    if (window.history.state?.greenArgricProfile) window.history.back();
+    else setScreen(profileReturnScreen);
+  };
+  useEffect(() => {
+    const handleBrowserBack = () => setScreen((current) => current === "user-profile" ? profileReturnScreen : current);
+    window.addEventListener("popstate", handleBrowserBack);
+    return () => window.removeEventListener("popstate", handleBrowserBack);
+  }, [profileReturnScreen]);
   const [messageTargetId, setMessageTargetId] = useState<number | null>(null);
 
   const handleLogin = async (selectedRole: Role, username: string, password: string) => {
@@ -5094,7 +5151,7 @@ export default function App() {
     <div className="flex min-h-screen bg-[#F7FAF7]">
       <Sidebar active={screen} role={role} onNavigate={setScreen} onLogout={handleLogout} />
       <div className="flex-1 flex flex-col min-h-screen">
-        <Header screen={screen} role={role} onNavigate={setScreen} onViewUser={user => { setViewedUser(user); setScreen("user-profile"); }} />
+        <Header screen={screen} role={role} onNavigate={setScreen} onViewUser={user => openUserProfile(user, screen)} />
         <main className="flex-1 p-6">
           {screen === "dashboard"     && <DashboardScreen role={role} />}
           {screen === "environment"   && <EnvironmentScreen />}
@@ -5104,12 +5161,12 @@ export default function App() {
           {screen === "thresholds"    && <ThresholdsScreen />}
           {screen === "zones"         && <ZonesScreen />}
           {screen === "tasks"         && <TasksScreen role={role} />}
-          {screen === "users"         && <UsersScreen onViewProfile={user => { setViewedUser(user); setScreen("user-profile"); }} />}
+          {screen === "users"         && <UsersScreen onViewProfile={user => openUserProfile(user, "users")} />}
           {screen === "notifications" && <OwnerNotificationsScreen />}
           {screen === "profile"       && (role === "admin" ? <AdminProfileScreen /> : role === "tech" ? <TechProfileScreen /> : <OwnerProfileScreen />)}
           {screen === "owner-yield"   && <OwnerYieldScreen />}
-          {screen === "messages"      && <MessagesScreen initialContactId={messageTargetId} onViewProfile={user => { setViewedUser(user); setScreen("user-profile"); }} />}
-          {screen === "user-profile"  && <UserDirectoryProfile user={viewedUser} onMessage={user => { setMessageTargetId(user.id); setScreen("messages"); }} />}
+          {screen === "messages"      && <MessagesScreen initialContactId={messageTargetId} onViewProfile={user => openUserProfile(user, "messages")} />}
+          {screen === "user-profile"  && <UserDirectoryProfile user={viewedUser} onBack={closeUserProfile} onMessage={user => { setMessageTargetId(user.id); setScreen("messages"); }} />}
           {screen === "reports"       && <ReportsScreen />}
           {screen === "help"          && <HelpScreen role={role} onNavigate={setScreen} />}
           {screen === "logo"          && <LogoScreen />}
