@@ -490,8 +490,16 @@ function Header({ screen, role, onNavigate, onViewUser }: { screen: Screen; role
   const normalizeSearch = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d").replace(/Đ/g, "D").toLowerCase().trim();
   const searchQuery = normalizeSearch(searchText);
   const roleNav = role === "owner" ? OWNER_NAV : role === "admin" ? ADMIN_NAV : TECH_NAV;
-  const featureResults = searchQuery.length < 2 ? [] : roleNav.filter((item: any) => normalizeSearch(`${item.label} ${PAGE_TITLES[item.id as Screen] || ""} ${FEATURE_SEARCH_KEYWORDS[item.id as Screen] || ""}`).includes(searchQuery)).slice(0, 6);
-  const userResults = searchQuery.length < 2 ? [] : directory.filter(user => normalizeSearch(`${user.full_name} ${user.email} ${user.role === "owner" ? "chủ vườn" : user.role === "admin" ? "quản trị viên" : "kỹ thuật viên"}`).includes(searchQuery)).slice(0, 5);
+  const containsSearchQuery = (...values: unknown[]) => values.some(value => normalizeSearch(String(value ?? "")).includes(searchQuery));
+  const featureResults = searchQuery.length < 2 ? [] : roleNav.filter((item: any) => containsSearchQuery(
+    item.label,
+    PAGE_TITLES[item.id as Screen],
+  )).slice(0, 6);
+  const userResults = searchQuery.length < 2 ? [] : directory.filter(user => containsSearchQuery(
+    user.full_name,
+    user.email,
+    user.role === "owner" ? "chủ vườn" : user.role === "admin" ? "quản trị viên" : "kỹ thuật viên",
+  )).slice(0, 5);
   const chooseFirstSearchResult = () => {
     if (featureResults[0]) { onNavigate(featureResults[0].id as Screen); setSearchText(""); }
     else if (userResults[0]) { onViewUser(userResults[0]); setSearchText(""); }
@@ -5327,6 +5335,7 @@ export default function App() {
     return () => window.removeEventListener("popstate", handleBrowserBack);
   }, [profileReturnScreen]);
   const [messageTargetId, setMessageTargetId] = useState<number | null>(null);
+  const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
 
   const handleLogin = async (selectedRole: Role, username: string, password: string) => {
     const apiRole = selectedRole === "tech" ? "technician" : selectedRole;
@@ -5343,7 +5352,21 @@ export default function App() {
     const actualRole: Role = result.user.role === "technician" ? "tech" : result.user.role;
     setRole(actualRole); setScreen("dashboard");
   };
-  const handleLogout = () => { localStorage.removeItem("greenArgricToken"); localStorage.removeItem("greenArgricUser"); setRole(null); setScreen("login"); };
+  const handleLogout = () => {
+    localStorage.removeItem("greenArgricToken");
+    localStorage.removeItem("greenArgricUser");
+    setLogoutConfirmOpen(false);
+    setRole(null);
+    setScreen("login");
+  };
+  useEffect(() => {
+    if (!logoutConfirmOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setLogoutConfirmOpen(false);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [logoutConfirmOpen]);
   useEffect(() => {
     const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:3000";
     const download = (filename: string, content: string, type = "text/csv;charset=utf-8") => {
@@ -5410,7 +5433,7 @@ export default function App() {
 
   return (
     <div className="flex min-h-screen bg-[#F7FAF7]">
-      <Sidebar active={screen} role={role} onNavigate={setScreen} onLogout={handleLogout} />
+      <Sidebar active={screen} role={role} onNavigate={setScreen} onLogout={() => setLogoutConfirmOpen(true)} />
       <div className="flex-1 flex flex-col min-h-screen">
         <Header screen={screen} role={role} onNavigate={setScreen} onViewUser={user => openUserProfile(user, screen)} />
         <main className="flex-1 p-6">
@@ -5433,6 +5456,50 @@ export default function App() {
           {screen === "logo"          && <LogoScreen />}
         </main>
       </div>
+      {logoutConfirmOpen && (
+        <div
+          className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-[1px] flex items-center justify-center p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="logout-dialog-title"
+          onMouseDown={(event) => { if (event.target === event.currentTarget) setLogoutConfirmOpen(false); }}
+        >
+          <div className="w-full max-w-[680px] rounded-2xl bg-white shadow-2xl overflow-hidden">
+            <div className="p-6 pb-4 flex items-start gap-4">
+              <span className="w-12 h-12 rounded-full bg-red-50 text-red-600 grid place-items-center flex-shrink-0">
+                <LogOut size={22} />
+              </span>
+              <div className="min-w-0">
+                <h2 id="logout-dialog-title" className="text-lg font-bold text-gray-900">Xác nhận đăng xuất</h2>
+                <p className="mt-2 text-sm leading-6 text-gray-600 whitespace-nowrap">
+                  Bạn có chắc chắn muốn đăng xuất khỏi tài khoản <strong className="text-gray-800">{sessionUserName(role)}</strong> không?
+                </p>
+                <p className="mt-1 text-xs text-gray-400 whitespace-nowrap">
+                  Bạn sẽ cần đăng nhập lại để tiếp tục sử dụng GREEN ARGRIC.
+                </p>
+              </div>
+            </div>
+            <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-3">
+              <button
+                type="button"
+                autoFocus
+                onClick={() => setLogoutConfirmOpen(false)}
+                className="px-5 py-2.5 rounded-xl border border-gray-200 bg-white text-sm font-semibold text-gray-700 hover:bg-gray-100"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="px-5 py-2.5 rounded-xl bg-red-600 text-white text-sm font-semibold hover:bg-red-700 flex items-center gap-2"
+              >
+                <LogOut size={16} />
+                Đăng xuất
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

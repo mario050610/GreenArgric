@@ -106,6 +106,118 @@ Cảm biến -> YOLO:BIT -> USB Serial -> Gateway -> MQTT -> Backend -> Website.
 Luồng điều khiển:
 Website -> Backend -> MQTT -> Gateway -> YOLO:BIT -> quạt/relay/bơm.
 
+---------------------------------------------------------
+IV.1. HIỆN THỰC SQL SERVER THẬT (NÊN LÀM TRƯỚC NGÀY DEMO)
+---------------------------------------------------------
+
+Mục đích:
+- Chứng minh backend thật sự kết nối Microsoft SQL Server.
+- Chứng minh Singleton Database Connection bằng connection pool dùng chung.
+- Chứng minh dữ liệu vẫn tồn tại sau khi backend tắt rồi mở lại.
+
+Yêu cầu:
+- Docker Desktop đã được mở và Docker Engine đang chạy.
+- Thực hiện lệnh trong WSL tại thư mục /mnt/d/DADN.
+- Không chạy docker compose down -v vì lệnh đó xóa volume và toàn bộ dữ liệu SQL.
+
+Bước 1 - Khởi động riêng SQL Server:
+
+  cd /mnt/d/DADN
+  docker compose up -d sqlserver
+  docker ps --filter name=green-argric-sqlserver
+
+Đợi khoảng 20-40 giây. Kiểm tra SQL Server đã sẵn sàng:
+
+  docker logs green-argric-sqlserver 2>&1 | tail -n 20
+
+Chỉ làm bước tiếp theo khi log có nội dung tương tự:
+"SQL Server is now ready for client connections".
+
+Bước 2 - Tạo cơ sở dữ liệu và nạp dữ liệu mẫu (chỉ chạy lần đầu):
+
+  cd /mnt/d/DADN
+  docker exec -i green-argric-sqlserver /opt/mssql-tools18/bin/sqlcmd \
+    -C -S localhost -U sa -P 'GreenArgric@123' \
+    < backend/database/GA-database.sql
+
+  docker exec -i green-argric-sqlserver /opt/mssql-tools18/bin/sqlcmd \
+    -C -S localhost -U sa -P 'GreenArgric@123' \
+    < backend/database/GA-data.sql
+
+Lưu ý: không chạy lại GA-data.sql nếu dữ liệu mẫu đã tồn tại, vì có thể trùng
+email, tên khu vực hoặc dữ liệu khóa chính/khóa duy nhất.
+
+Nếu image dùng đường dẫn sqlcmd cũ, thay:
+  /opt/mssql-tools18/bin/sqlcmd
+bằng:
+  /opt/mssql-tools/bin/sqlcmd
+
+Bước 3 - Kiểm tra nhanh dữ liệu trong SQL Server:
+
+  docker exec -it green-argric-sqlserver /opt/mssql-tools18/bin/sqlcmd \
+    -C -S localhost -U sa -P 'GreenArgric@123' \
+    -d GreenArgric -Q "SELECT COUNT(*) AS users FROM [User]; SELECT COUNT(*) AS areas FROM HydroponicArea;"
+
+Bước 4 - Cấu hình backend dùng SQL Server:
+
+  cd /mnt/d/DADN/backend
+  cp -n .env.example .env
+  sed -i 's/^DATA_MODE=.*/DATA_MODE=mssql/' .env
+  sed -i 's/^DB_SERVER=.*/DB_SERVER=127.0.0.1/' .env
+  sed -i 's/^DB_PORT=.*/DB_PORT=1433/' .env
+  sed -i 's/^DB_USER=.*/DB_USER=sa/' .env
+  sed -i 's/^DB_PASSWORD=.*/DB_PASSWORD=GreenArgric@123/' .env
+  sed -i 's/^DB_NAME=.*/DB_NAME=GreenArgric/' .env
+  sed -i 's/^DB_ENCRYPT=.*/DB_ENCRYPT=false/' .env
+  sed -i 's/^DB_TRUST_CERT=.*/DB_TRUST_CERT=true/' .env
+
+Mật khẩu trên chỉ dùng cho máy demo cục bộ. Không commit backend/.env lên GitHub.
+
+Bước 5 - Chạy backend và xác nhận kết nối:
+
+  cd /mnt/d/DADN/backend
+  pnpm start
+
+Backend đạt yêu cầu khi terminal xuất hiện:
+  [database] Connected to GreenArgric
+  [database] Loaded application state from SQL Server
+
+Bước 6 - Chứng minh dữ liệu tồn tại sau khi khởi động lại:
+
+1. Đăng nhập Website và thêm một bản ghi dễ nhận biết, ví dụ tạo cảnh báo,
+   cập nhật khu vực hoặc gửi một số đo từ cảm biến.
+2. Dừng riêng backend bằng Ctrl+C, không dừng/xóa container SQL Server.
+3. Chạy lại:
+
+  cd /mnt/d/DADN/backend
+  pnpm start
+
+4. Tải lại Website và chỉ bản ghi vẫn còn. Đây là bằng chứng dữ liệu được lưu
+   trong SQL Server thay vì chỉ tồn tại trong bộ nhớ tiến trình.
+
+Bước 7 - Kiểm tra tự động tùy chọn:
+
+Mở terminal khác khi backend đang chạy đúng địa chỉ API rồi thực hiện:
+
+  cd /mnt/d/DADN/backend
+  TEST_API_URL=http://127.0.0.1:3000 TEST_PHASE=write node tests/mssql-smoke.mjs
+
+Khởi động lại backend, sau đó chạy:
+
+  TEST_API_URL=http://127.0.0.1:3000 TEST_PHASE=read node tests/mssql-smoke.mjs
+
+Kết quả mong đợi:
+  MSSQL write phase: PASS
+  MSSQL restart/read phase: PASS
+
+Phương án quay lại chế độ demo không cần SQL Server:
+
+  cd /mnt/d/DADN/backend
+  sed -i 's/^DATA_MODE=.*/DATA_MODE=memory/' .env
+
+Sau đó khởi động lại backend. Dữ liệu SQL không bị xóa và có thể dùng lại khi
+chuyển DATA_MODE=mssql.
+
 =========================================================
 V. KỊCH BẢN TRÌNH BÀY
 =========================================================
@@ -188,6 +300,8 @@ VII. CHECKLIST TRƯỚC KHI BẢO VỆ
 [ ] Đã hiệu chuẩn khô/ướt và khoảng cách đầy/cạn.
 [ ] Gateway nhận đủ dữ liệu thật và đúng AREA_ID=1.
 [ ] Backend, Frontend và MQTT online.
+[ ] Container green-argric-sqlserver đang chạy và backend báo đã kết nối.
+[ ] DATA_MODE=mssql; dữ liệu vẫn còn sau khi khởi động lại backend.
 [ ] Cảnh báo ngưỡng hoạt động.
 [ ] Relay và quạt bật/tắt đúng.
 [ ] Bơm có nước, ống chắc chắn và chỉ chạy thử ngắn.

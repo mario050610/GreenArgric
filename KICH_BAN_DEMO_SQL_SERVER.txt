@@ -1,0 +1,363 @@
++KỊCH BẢN DEMO SQL SERVER - GREEN ARGRIC
+==========================================
+
+MỤC TIÊU
+--------
+1. Hiển thị danh sách và thông tin chi tiết các bảng.
+2. Demo SELECT, JOIN, GROUP BY và COUNT.
+3. Demo View, Function, Stored Procedure và Trigger.
+4. Tạo tài khoản trên giao diện và chứng minh dữ liệu xuất hiện trong SQL Server.
+
+LƯU Ý QUAN TRỌNG
+----------------
+- Backend phải chạy với DATA_MODE=mssql.
+- SSMS phải kết nối đúng SQL Server chứa database GreenArgric.
+- Không trình chiếu cột password_hash khi demo.
+- Chạy GA-database.sql và GA-data.sql trước.
+- Sau đó chạy một lần:
+  D:\DADN\backend\database\GA-demo-objects.sql
+
+============================================================
+I. KIỂM TRA BACKEND ĐANG DÙNG SQL SERVER
+============================================================
+
+Trong WSL:
+
+  cd ~/green-argric-run/backend
+  grep -E '^(DATA_MODE|DB_SERVER|DB_PORT|DB_USER|DB_NAME)=' .env
+  node index.js
+
+Kết quả cần có:
+
+  DATA_MODE=mssql
+  [database] Connected to GreenArgric
+  [database] Loaded application state from SQL Server
+
+Nếu đang chạy bản trên ổ D:
+
+  cd /mnt/d/DADN/backend
+  node index.js
+
+Lưu ý: Website, backend và SSMS phải cùng dùng một database.
+Nếu Website chạy từ ~/green-argric-run nhưng bạn chỉ sửa code tại /mnt/d/DADN,
+hãy đồng bộ code trước khi demo.
+
+============================================================
+II. TẠO VIEW, FUNCTION, PROCEDURE VÀ TRIGGER
+============================================================
+
+Trong SSMS:
+1. File -> Open -> File.
+2. Mở:
+   D:\DADN\backend\database\GA-demo-objects.sql
+3. Nhấn Ctrl+A rồi Execute hoặc F5.
+4. Kết quả cần là: Commands completed successfully.
+
+Kiểm tra các đối tượng vừa tạo:
+
+  USE GreenArgric;
+  GO
+
+  SELECT name, type_desc
+  FROM sys.objects
+  WHERE name IN (
+      'vw_UserDetails',
+      'fn_CountUsersByRole',
+      'fn_CountOpenAlertsByArea',
+      'sp_GetAreaOperationalSummary',
+      'sp_GetUserStatistics',
+      'trg_User_Audit',
+      'UserAuditLog'
+  )
+  ORDER BY type_desc, name;
+  GO
+
+============================================================
+III. HIỂN THỊ DANH SÁCH VÀ CHI TIẾT CÁC BẢNG
+============================================================
+
+1. Liệt kê tất cả bảng:
+
+  USE GreenArgric;
+  GO
+
+  SELECT
+      TABLE_SCHEMA,
+      TABLE_NAME
+  FROM INFORMATION_SCHEMA.TABLES
+  WHERE TABLE_TYPE = 'BASE TABLE'
+  ORDER BY TABLE_NAME;
+  GO
+
+2. Xem chi tiết cột, kiểu dữ liệu và khả năng NULL của tất cả bảng:
+
+  SELECT
+      TABLE_NAME,
+      ORDINAL_POSITION,
+      COLUMN_NAME,
+      DATA_TYPE,
+      CHARACTER_MAXIMUM_LENGTH,
+      IS_NULLABLE
+  FROM INFORMATION_SCHEMA.COLUMNS
+  ORDER BY TABLE_NAME, ORDINAL_POSITION;
+  GO
+
+3. Xem khóa chính và khóa ngoại:
+
+  SELECT
+      tc.TABLE_NAME,
+      tc.CONSTRAINT_TYPE,
+      tc.CONSTRAINT_NAME,
+      kcu.COLUMN_NAME
+  FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc
+  LEFT JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE AS kcu
+      ON kcu.CONSTRAINT_NAME = tc.CONSTRAINT_NAME
+     AND kcu.TABLE_SCHEMA = tc.TABLE_SCHEMA
+  WHERE tc.CONSTRAINT_TYPE IN ('PRIMARY KEY', 'FOREIGN KEY', 'UNIQUE')
+  ORDER BY tc.TABLE_NAME, tc.CONSTRAINT_TYPE;
+  GO
+
+4. Xem dữ liệu chi tiết một số bảng, không hiện mật khẩu:
+
+  SELECT TOP (20)
+      user_id, full_name, email, role_id, status, created_at
+  FROM dbo.[User]
+  ORDER BY user_id DESC;
+
+  SELECT TOP (20) *
+  FROM dbo.HydroponicArea
+  ORDER BY area_id;
+
+  SELECT TOP (20) *
+  FROM dbo.Sensor
+  ORDER BY sensor_id;
+
+  SELECT TOP (20) *
+  FROM dbo.Device
+  ORDER BY device_id;
+
+  SELECT TOP (20) *
+  FROM dbo.HydroponicReading
+  ORDER BY reading_time DESC;
+
+  SELECT TOP (20) *
+  FROM dbo.Alert
+  ORDER BY created_at DESC;
+  GO
+
+============================================================
+IV. DEMO COUNT, GROUP BY VÀ JOIN
+============================================================
+
+1. Đếm tổng số bản ghi của các bảng quan trọng:
+
+  SELECT
+      (SELECT COUNT(*) FROM dbo.[User]) AS total_users,
+      (SELECT COUNT(*) FROM dbo.HydroponicArea) AS total_areas,
+      (SELECT COUNT(*) FROM dbo.Sensor) AS total_sensors,
+      (SELECT COUNT(*) FROM dbo.Device) AS total_devices,
+      (SELECT COUNT(*) FROM dbo.Alert) AS total_alerts,
+      (SELECT COUNT(*) FROM dbo.Task) AS total_tasks;
+  GO
+
+2. Đếm tài khoản theo vai trò và trạng thái:
+
+  SELECT
+      r.role_name,
+      u.status,
+      COUNT(*) AS user_count
+  FROM dbo.[User] AS u
+  INNER JOIN dbo.Role AS r ON r.role_id = u.role_id
+  GROUP BY r.role_name, u.status
+  ORDER BY r.role_name, u.status;
+  GO
+
+3. Đếm cảm biến, thiết bị và cảnh báo của từng khu vực:
+
+  SELECT
+      a.area_id,
+      a.area_name,
+      COUNT(DISTINCT s.sensor_id) AS sensor_count,
+      COUNT(DISTINCT d.device_id) AS device_count,
+      COUNT(DISTINCT al.alert_id) AS alert_count
+  FROM dbo.HydroponicArea AS a
+  LEFT JOIN dbo.Sensor AS s ON s.area_id = a.area_id
+  LEFT JOIN dbo.Device AS d ON d.area_id = a.area_id
+  LEFT JOIN dbo.Alert AS al ON al.area_id = a.area_id
+  GROUP BY a.area_id, a.area_name
+  ORDER BY a.area_id;
+  GO
+
+============================================================
+V. DEMO VIEW
+============================================================
+
+View vw_UserDetails kết hợp bảng User và Role để hiển thị tài khoản dễ đọc:
+
+  SELECT *
+  FROM dbo.vw_UserDetails
+  ORDER BY user_id DESC;
+  GO
+
+Điểm trình bày:
+- View che phần password_hash.
+- role_id được chuyển thành tên vai trò.
+- Giao diện hoặc báo cáo có thể truy vấn một cấu trúc nhất quán.
+
+============================================================
+VI. DEMO FUNCTION
+============================================================
+
+1. Hàm đếm tài khoản theo vai trò:
+
+  SELECT
+      dbo.fn_CountUsersByRole('admin') AS administrators,
+      dbo.fn_CountUsersByRole('owner') AS owners,
+      dbo.fn_CountUsersByRole('technician') AS technicians;
+  GO
+
+2. Hàm đếm cảnh báo chưa xử lý của Khu A:
+
+  DECLARE @areaA INT =
+      (SELECT area_id FROM dbo.HydroponicArea WHERE area_name = N'Khu A');
+
+  SELECT
+      @areaA AS area_id,
+      dbo.fn_CountOpenAlertsByArea(@areaA) AS open_alerts;
+  GO
+
+============================================================
+VII. DEMO STORED PROCEDURE
+============================================================
+
+1. Thống kê tài khoản:
+
+  EXEC dbo.sp_GetUserStatistics;
+  GO
+
+2. Tổng hợp tất cả khu vực:
+
+  EXEC dbo.sp_GetAreaOperationalSummary;
+  GO
+
+3. Chỉ tổng hợp Khu A:
+
+  DECLARE @areaA INT =
+      (SELECT area_id FROM dbo.HydroponicArea WHERE area_name = N'Khu A');
+
+  EXEC dbo.sp_GetAreaOperationalSummary @area_id = @areaA;
+  GO
+
+Điểm trình bày:
+- Procedure nhận tham số @area_id.
+- Nếu @area_id là NULL thì trả tất cả khu vực.
+- Kết quả gồm sức khỏe, số cảm biến, thiết bị, cảnh báo đang mở và thời gian đo mới nhất.
+
+============================================================
+VIII. DEMO TRIGGER VÀ TẠO TÀI KHOẢN TỪ GIAO DIỆN
+============================================================
+
+Trigger trg_User_Audit tự ghi INSERT, UPDATE hoặc DELETE của bảng User vào
+UserAuditLog.
+
+Bước 1 - Ghi nhận số tài khoản trước khi tạo:
+
+  SELECT COUNT(*) AS before_count FROM dbo.[User];
+
+  SELECT TOP (10) *
+  FROM dbo.UserAuditLog
+  ORDER BY changed_at DESC, audit_id DESC;
+  GO
+
+Bước 2 - Trên Website:
+1. Đăng nhập bằng tài khoản quản trị viên.
+2. Mở trang Người dùng.
+3. Nhấn Thêm tài khoản.
+4. Tạo một chủ vườn hoặc kỹ thuật viên bằng email chưa tồn tại.
+5. Nhấn Lưu.
+
+Bước 3 - Quay lại SSMS và chạy:
+
+  SELECT COUNT(*) AS after_count FROM dbo.[User];
+
+  SELECT TOP (10)
+      user_id, full_name, email, role_name, status, created_at
+  FROM dbo.vw_UserDetails
+  ORDER BY user_id DESC;
+
+  SELECT TOP (10)
+      audit_id, user_id, action_type, full_name,
+      email, status, changed_at
+  FROM dbo.UserAuditLog
+  ORDER BY changed_at DESC, audit_id DESC;
+  GO
+
+Kết quả mong đợi:
+- after_count = before_count + 1.
+- Tài khoản vừa tạo xuất hiện trong vw_UserDetails.
+- UserAuditLog có một dòng action_type = INSERT.
+- Tải lại Website hoặc đăng nhập lại, tài khoản vẫn còn.
+
+Bước 4 - Thử khóa/mở tài khoản trên giao diện rồi chạy lại:
+
+  SELECT TOP (10)
+      audit_id, user_id, action_type, full_name,
+      email, status, changed_at
+  FROM dbo.UserAuditLog
+  ORDER BY changed_at DESC, audit_id DESC;
+  GO
+
+Kết quả mong đợi:
+- Trigger ghi action_type = UPDATE.
+- status trong User và UserAuditLog đổi tương ứng.
+
+============================================================
+IX. NẾU GIAO DIỆN THÊM TÀI KHOẢN NHƯNG SQL KHÔNG ĐỔI
+============================================================
+
+1. Kiểm tra backend có thật sự chạy DATA_MODE=mssql:
+
+  curl http://127.0.0.1:3000/health
+
+Trong JSON phải có:
+
+  "dataMode": "mssql"
+
+2. Kiểm tra terminal backend phải có:
+
+  [database] Connected to GreenArgric
+  [database] Loaded application state from SQL Server
+
+3. Kiểm tra Website đang gọi đúng backend:
+
+  http://127.0.0.1:3000
+
+4. Kiểm tra SSMS đang mở đúng server và đúng database:
+
+  SELECT
+      @@SERVERNAME AS server_name,
+      DB_NAME() AS current_database;
+  GO
+
+5. Trong SSMS phải chọn GreenArgric, hoặc câu truy vấn phải bắt đầu bằng:
+
+  USE GreenArgric;
+  GO
+
+6. Nếu backend chạy bản ~/green-argric-run, bảo đảm file .env được sửa trong:
+
+  ~/green-argric-run/backend/.env
+
+Không chỉ sửa /mnt/d/DADN/backend/.env rồi chạy một bản code khác.
+
+============================================================
+X. CÂU TRÌNH BÀY NGẮN KHI DEMO
+============================================================
+
+“Hệ thống sử dụng SQL Server làm nơi lưu trữ chính. Backend chạy ở chế độ
+DATA_MODE=mssql nên khi quản trị viên tạo, sửa, khóa hoặc xóa tài khoản trên
+Website, API thực hiện INSERT, UPDATE hoặc DELETE trực tiếp trên bảng User.
+Trigger tự ghi lịch sử thay đổi vào UserAuditLog. View kết hợp tài khoản với
+vai trò; function thực hiện phép đếm tái sử dụng; stored procedure tổng hợp
+tình trạng từng khu vực. Dữ liệu vẫn tồn tại khi backend được khởi động lại.”
+
