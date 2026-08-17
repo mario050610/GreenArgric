@@ -38,6 +38,10 @@ def command_subscription(base: str) -> str:
     return f'{base}/area/+/device/+/set'
 
 
+def lcd_subscription(base: str) -> str:
+    return f'{base}/area/+/lcd/set'
+
+
 class LocalMqttBridge:
     def __init__(self, config: GatewayConfig) -> None:
         if mqtt is None:
@@ -59,6 +63,7 @@ class LocalMqttBridge:
         self.connected = True
         topic = command_subscription(self.config.mqtt_base_topic)
         client.subscribe(topic, qos=1)
+        client.subscribe(lcd_subscription(self.config.mqtt_base_topic), qos=1)
         print(f'[mqtt-local] Đã kết nối; đang nghe: {topic}')
 
     def _on_disconnect(self, _client, _userdata, *_args) -> None:
@@ -68,6 +73,15 @@ class LocalMqttBridge:
     def _on_message(self, _client, _userdata, message) -> None:
         parts = message.topic.split('/')
         if len(parts) < 6:
+            return
+        if parts[-2] == 'lcd':
+            try:
+                parsed = json.loads(message.payload.decode('utf-8'))
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                return
+            sensor = str(parsed.get('sensor') or 'auto')
+            self.commands.put({'type': 'lcd', 'sensor': sensor})
+            print(f'[mqtt-local] LCD -> {sensor}')
             return
         device_code = parts[-2]
         device = DEVICE_ALIASES.get(device_code, device_code)

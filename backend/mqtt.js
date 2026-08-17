@@ -344,3 +344,11 @@ export async function publishDeviceCommand(device, requestedState, metadata = {}
 export function getMqttStatus() {
   return { ...state, subscriptions: [...state.subscriptions] };
 }
+
+export function publishLcdSelection(areaId, sensor) {
+  if (!client?.connected) return { sent: false, reason: 'mqtt_not_connected' };
+  if (config.mqtt.provider !== 'local') return { sent: false, reason: 'lcd_requires_local_mqtt' };
+  const topic = `${config.mqtt.local.baseTopic}/area/${areaId}/lcd/set`;
+  client.publish(topic, JSON.stringify({ sensor }), { qos: 1 });
+  return { sent: true, topic, sensor };
+}

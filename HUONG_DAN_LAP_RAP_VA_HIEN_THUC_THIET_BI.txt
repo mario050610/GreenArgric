@@ -1,0 +1,613 @@
+HƯỚNG DẪN LẮP RÁP VÀ HIỆN THỰC BỘ THIẾT BỊ GREEN ARGRIC
+======================================================================
+
+Tài liệu này áp dụng cho bộ kit OhStem trong hình của nhóm, gồm:
+- YOLO:BIT và mạch mở rộng.
+- Cáp USB và dây tín hiệu Grove.
+- Cảm biến DHT20.
+- Cảm biến ánh sáng.
+- Cảm biến độ ẩm đất.
+- Hai module cảm biến khoảng cách.
+- Cảm biến chuyển động và mắt đọc tín hiệu hồng ngoại.
+- Module relay mini.
+- Công tắc USB hai kênh.
+- Quạt mini.
+- Động cơ bơm nước và ống dẫn.
+- Đèn LED RGB.
+- Màn hình LCD 16x2.
+- Động cơ servo và remote hồng ngoại.
+
+Phạm vi hiện thực chính của GREEN ARGRIC:
+- Đọc DHT20, ánh sáng, độ ẩm đất và khoảng cách/mức nước.
+- Điều khiển relay, bơm nước và quạt mini.
+- Truyền dữ liệu hai chiều qua USB Serial, Python Gateway và MQTT.
+- LCD, LED RGB, servo, chuyển động và remote là phần mở rộng; chỉ demo khi
+  nhóm đã bổ sung code và kiểm thử riêng.
+
+
+======================================================================
+I. LƯU Ý AN TOÀN TRƯỚC KHI LẮP
+======================================================================
+
+1. Rút cáp USB và tắt toàn bộ nguồn trước khi cắm hoặc tháo module.
+2. Chỉ dùng thiết bị điện áp thấp/USB đi kèm bộ kit. Không đấu điện 220 V.
+3. Không cấp bơm hoặc quạt trực tiếp từ chân GPIO.
+4. Bơm phải đi qua công tắc USB hoặc mạch điều khiển phù hợp.
+5. Lần đầu thử bơm chỉ bật 1-2 giây; đầu hút phải nằm trong nước.
+6. Đặt bình nước thấp và cách xa YOLO:BIT, mạch mở rộng và laptop.
+7. Cố định ống dẫn, hướng đầu xả vào bình để nước không bắn vào mạch.
+8. Không cắm ngược đầu Grove. Kiểm tra đúng nhãn cổng trước khi cấp nguồn.
+9. Nếu module nóng, có mùi lạ hoặc hoạt động bất thường: ngắt nguồn ngay.
+
+
+======================================================================
+II. SƠ ĐỒ LUỒNG KẾT NỐI
+======================================================================
+
+Luồng dữ liệu cảm biến:
+
+  Cảm biến
+      -> YOLO:BIT
+      -> USB Serial
+      -> Python IoT Gateway
+      -> MQTT Broker
+      -> Backend
+      -> Website
+
+Luồng điều khiển:
+
+  Website
+      -> Backend
+      -> MQTT Broker
+      -> Python IoT Gateway
+      -> USB Serial
+      -> YOLO:BIT
+      -> relay / bơm / quạt
+      -> phản hồi trạng thái về Website
+
+Lưu ý: YOLO:BIT không gửi thẳng dữ liệu vào backend. Python IoT Gateway là
+thành phần trung gian bắt buộc trong kiến trúc hiện tại.
+
+
+======================================================================
+III. SƠ ĐỒ CỔNG ĐANG ĐƯỢC CODE SỬ DỤNG
+======================================================================
+
+  Cổng I2C1       : DHT20
+  Cổng I2C2       : LCD 16x2 (tùy chọn, code chính chưa điều khiển LCD)
+  Cổng P0         : Cảm biến độ ẩm đất
+  Cổng P1         : Cảm biến ánh sáng
+  Cổng P2         : Relay mini / LED hoặc tải thử điện áp thấp
+  Cổng P10/P13    : Cảm biến khoảng cách (Trigger/Echo)
+  Cổng P14        : Công tắc USB kênh 1 - bơm nước
+  Cổng P15        : Công tắc USB kênh 2 - tải dự phòng
+  Cổng P16/P12    : Quạt mini
+
+Các cổng trên khớp với:
+  D:\DADN\microbit\config.py
+  D:\DADN\microbit\sensors.py
+  D:\DADN\microbit\actuators.py
+
+Không tự ý đổi cổng nếu chưa sửa lại code tương ứng.
+
+
+======================================================================
+IV. CÁCH LẮP RÁP TỪNG BƯỚC
+======================================================================
+
+QUY ƯỚC NỐI DÂY GROVE
+----------------------
+
+Phần lớn module OhStem trong hộp dùng đầu cắm Grove 4 chân. Mỗi dây có hai
+đầu giống nhau:
+
+  Đầu A -> ổ cắm trắng trên module cảm biến/thiết bị.
+  Đầu B -> cổng có nhãn tương ứng trên mạch mở rộng.
+
+Thông thường dây Grove gồm:
+
+  Đỏ   : VCC/nguồn.
+  Đen  : GND/mass.
+  Trắng: tín hiệu thứ nhất.
+  Vàng : tín hiệu thứ hai.
+
+Không dựa hoàn toàn vào màu dây nếu dây thực tế khác màu. Ưu tiên rãnh khóa,
+nhãn trên module và nhãn cổng trên mạch mở rộng. Không cố ép đầu cắm khi rãnh
+không khớp. Với dây Grove nguyên bộ, không cần tách từng sợi để nối thủ công.
+
+BẢNG NỐI DÂY NHANH
+-------------------
+
+  Thiết bị                  Đầu trên thiết bị         Cổng mạch mở rộng
+  ---------------------------------------------------------------------
+  DHT20                     Cổng Grove/I2C            I2C1
+  LCD 16x2 (tùy chọn)       Cổng Grove/I2C            I2C2
+  Cảm biến độ ẩm đất        Cổng Grove                P0
+  Cảm biến ánh sáng         Cổng Grove                P1
+  Relay mini                Cổng Grove điều khiển     P2
+  Cảm biến khoảng cách      Cổng Grove Trig/Echo      P10/P13
+  Công tắc USB hai kênh     Cổng điều khiển kênh 1    P14
+  Công tắc USB hai kênh     Cổng điều khiển kênh 2    P15 (dự phòng)
+  Quạt mini                 Cổng Grove motor          P16/P12
+  YOLO:BIT                  Chân cắm cạnh bo          Khe YOLO:BIT
+  Mạch mở rộng              Cổng USB nguồn/dữ liệu    Laptop qua cáp USB
+
+Thứ tự nối vật lý bắt buộc:
+
+  1. Rút cáp USB khỏi laptop.
+  2. Lắp YOLO:BIT vào mạch mở rộng.
+  3. Cắm dây vào phía module trước.
+  4. Cắm đầu còn lại vào đúng cổng trên mạch mở rộng.
+  5. Nối tải điện áp thấp vào công tắc USB/relay.
+  6. Kiểm tra lại toàn bộ.
+  7. Cuối cùng mới cắm cáp USB vào laptop.
+
+Bước 1 - Lắp YOLO:BIT vào mạch mở rộng
+---------------------------------------
+1. Đảm bảo chưa cắm cáp USB.
+2. Xác định đúng chiều chân cắm của YOLO:BIT và khe trên mạch mở rộng.
+3. Ấn thẳng, đều hai bên; không bẻ hoặc ép lệch chân.
+4. Đặt mạch trên bề mặt khô, phẳng và không dẫn điện.
+
+Bước 2 - Lắp DHT20
+-------------------
+1. Cắm một đầu dây Grove vào ổ trắng trên module DHT20.
+2. Cắm đầu còn lại vào ổ I2C1 trên mạch mở rộng.
+3. Đặt cảm biến nơi thoáng khí, không để sát quạt và không để dính nước.
+4. DHT20 lấy nguồn và truyền dữ liệu I2C qua cùng dây Grove; không cần nối
+   thêm dây nguồn rời.
+
+Bước 3 - Lắp LCD 16x2 (tùy chọn)
+---------------------------------
+1. Cắm LCD vào I2C2.
+2. I2C1 và I2C2 dùng chung bus P19/P20 nên DHT20 và LCD chỉ hoạt động cùng
+   lúc khi địa chỉ I2C không trùng.
+3. Code hiện tại chưa có module hiển thị LCD. Nếu chưa bổ sung code, có thể
+   vẫn lắp để minh họa nhưng không được nói rằng LCD đã hoạt động.
+
+Bước 4 - Lắp cảm biến độ ẩm đất
+--------------------------------
+1. Cắm một đầu dây Grove vào bo nhỏ phía trên hai que đo.
+2. Cắm đầu còn lại vào P0 trên mạch mở rộng.
+3. Chỉ cắm phần hai que đo vào đất/giá thể; không nhúng cả bo mạch.
+4. Đặt một cốc giá thể khô và một cốc giá thể ẩm để hiệu chỉnh trước demo.
+
+Bước 5 - Lắp cảm biến ánh sáng
+-------------------------------
+1. Cắm một đầu dây Grove vào cảm biến ánh sáng.
+2. Cắm đầu còn lại vào P1 trên mạch mở rộng.
+3. Hướng bề mặt cảm biến lên nguồn sáng.
+4. Không che cảm biến bằng dây hoặc vỏ hộp.
+5. Số lux trong code chỉ là giá trị ước lượng từ ADC, không phải máy đo lux
+   đã hiệu chuẩn.
+
+Bước 6 - Lắp cảm biến khoảng cách để đo mức nước
+-------------------------------------------------
+1. Cắm dây Grove vào module có hai mắt tròn phát/thu siêu âm.
+2. Cắm đầu còn lại vào cụm P10/P13. Code dùng P10 làm Trigger và P13 làm
+   Echo; không đảo sang cặp cổng khác nếu chưa sửa sensors.py.
+3. Cố định hai mắt cảm biến hướng thẳng xuống mặt nước.
+4. Không để cảm biến chạm nước hoặc bị hơi nước bám trực tiếp.
+5. Đảm bảo giữa cảm biến và mặt nước không có ống hoặc vật cản.
+6. Nếu có hai cảm biến khoảng cách, chỉ dùng một module cho code hiện tại;
+   module còn lại để dự phòng hoặc làm bài mở rộng.
+
+Bước 7 - Lắp relay mini
+------------------------
+1. Cắm một đầu dây Grove vào cổng tín hiệu của relay mini.
+2. Cắm đầu còn lại vào P2 trên mạch mở rộng.
+3. Relay có cọc vít tải COM, NO và NC:
+   - COM: chân chung của nguồn tải điện áp thấp.
+   - NO: bình thường hở; tải chỉ chạy khi relay được bật.
+   - NC: bình thường đóng; tải chạy khi relay chưa được bật.
+4. Khi cần demo tải qua relay, ưu tiên COM + NO để thiết bị mặc định tắt.
+5. Sơ đồ nguyên tắc cho tải DC điện áp thấp:
+
+     Cực dương nguồn tải -> COM của relay
+     NO của relay        -> cực dương của tải
+     Cực âm của tải      -> cực âm nguồn tải
+
+6. Nếu chỉ cần chứng minh lệnh, không nối tải; nghe tiếng relay đóng/ngắt là
+   đủ. Không đấu điện lưới 220 V.
+7. Không dùng nguồn tải vượt thông số in trên relay và module trong bộ kit.
+8. Kiểm tra relay kích mức HIGH hay LOW. Code mặc định đang dùng:
+
+     RELAY_ACTIVE_LOW = False
+
+9. Nếu relay bật ngược với lệnh, tắt nguồn rồi đổi thành True trong:
+
+     D:\DADN\microbit\config.py
+
+Bước 8 - Lắp công tắc USB và bơm nước
+--------------------------------------
+1. Cắm dây điều khiển kênh 1 của module công tắc USB vào P14.
+2. Nếu module có dây điều khiển riêng cho kênh 2, cắm dây đó vào P15 hoặc để
+   trống khi không dùng.
+3. Cổng USB nguồn vào của module nhận nguồn USB phù hợp theo bộ kit.
+4. Cắm đầu USB của bơm vào cổng USB đầu ra kênh 1.
+5. Không nối motor bơm trực tiếp vào P14; P14 chỉ là tín hiệu điều khiển.
+6. Gắn ống mềm vào đầu xả của bơm, ấn vừa chặt để không tuột.
+7. Đặt thân/đầu hút bơm theo đúng kiểu bơm trong nước của bộ kit; đầu xả quay
+   lại bình chứa.
+8. Kênh P15 để dự phòng; không gọi là bơm dinh dưỡng nếu nhóm chỉ có một
+   bơm nước.
+9. Chỉ cấp nguồn cho bơm sau khi đã kiểm tra đường ống.
+
+Bước 9 - Lắp quạt mini
+-----------------------
+1. Cắm dây Grove của module quạt vào cụm cổng P16/P12.
+2. Không nối trực tiếp hai dây motor trần vào chân YOLO:BIT; dùng bo điều
+   khiển quạt đi kèm bộ kit.
+3. Để cánh quạt không vướng dây và cách tay người thao tác.
+4. Code dùng P16 để bật/tắt và giữ P12 ở mức 0 cho một chiều quay.
+
+Bước 10 - LED RGB, servo, chuyển động và remote
+-----------------------------------------------
+1. Các module này có trong hộp nhưng chưa nằm trong luồng phần cứng chính.
+2. Không cắm chúng vào các cổng P0, P1, P2, P10, P13, P14, P15, P16 hoặc
+   P12 đang được thiết bị chính sử dụng.
+3. Muốn hiện thực phải chọn cổng còn trống, cập nhật config/code, kiểm thử
+   riêng rồi mới đưa vào demo.
+
+Bước 11 - Kiểm tra cuối và cấp nguồn
+------------------------------------
+1. Kiểm tra tất cả đầu nối đã vào hết và đúng cổng.
+2. Bảo đảm mạch khô, bình nước ở xa laptop.
+3. Cắm cáp USB có hỗ trợ truyền dữ liệu từ YOLO:BIT vào laptop.
+4. Chờ hệ điều hành nhận ổ MICROBIT và cổng Serial.
+
+
+======================================================================
+IV.1. CÁCH KẾT NỐI YOLO:BIT VỚI LAPTOP
+======================================================================
+
+1. Dùng cáp USB có khả năng truyền dữ liệu, không dùng cáp chỉ sạc.
+2. Một đầu cắm vào cổng USB của YOLO:BIT/mạch theo thiết kế bộ kit.
+3. Đầu còn lại cắm vào laptop.
+4. Sau vài giây phải xuất hiện:
+   - Ổ đĩa MICROBIT để chép firmware HEX.
+   - Cổng Serial COMx trên Windows hoặc /dev/ttyACMx trong Linux/WSL.
+
+Kiểm tra trên Windows:
+
+  Device Manager
+    -> Ports (COM & LPT)
+    -> tìm USB Serial Device hoặc Micro:bit
+
+Ghi lại tên cổng, ví dụ COM3, rồi đặt trong iot-gateway/.env:
+
+  SERIAL_PORT=COM3
+  SERIAL_BAUD=115200
+
+Kiểm tra trong WSL:
+
+  ls -l /dev/ttyACM* /dev/ttyUSB* 2>/dev/null
+
+Nếu thấy /dev/ttyACM0 thì đặt:
+
+  SERIAL_PORT=/dev/ttyACM0
+  SERIAL_BAUD=115200
+
+Nếu Windows thấy COM nhưng WSL không thấy /dev/ttyACM*, chạy Python Gateway
+trực tiếp trên Windows. Không cần cố chuyển cổng USB vào WSL khi gần ngày demo.
+
+
+======================================================================
+IV.2. KIỂM TRA KẾT NỐI TỪNG THIẾT BỊ TRƯỚC KHI CHẠY WEB
+======================================================================
+
+Kiểm tra theo thứ tự, mỗi lần chỉ cắm thêm một module:
+
+1. Chỉ YOLO:BIT + USB:
+   - Nạp firmware.
+   - Xác nhận có cổng Serial và dữ liệu JSON.
+
+2. Thêm DHT20 ở I2C1:
+   - JSON phải có temperature và humidity.
+
+3. Thêm độ ẩm đất ở P0:
+   - JSON phải có soil_moisture.
+   - Chạm/nhúng hai que vào giá thể ẩm, số phải thay đổi.
+
+4. Thêm ánh sáng ở P1:
+   - JSON phải có light.
+   - Che và chiếu đèn, số phải thay đổi.
+
+5. Thêm khoảng cách ở P10/P13:
+   - JSON phải có distance_cm và water_level.
+   - Đưa vật phẳng lại gần/ra xa để kiểm tra trước khi đặt lên bình nước.
+
+6. Thêm relay ở P2:
+   - Gửi lệnh grow_light ON/OFF.
+   - Nghe tiếng relay và xem gói status.
+
+7. Thêm quạt ở P16/P12:
+   - Gửi fan ON/OFF.
+
+8. Cuối cùng mới nối bơm qua công tắc USB P14:
+   - Đặt bơm và ống đúng vị trí.
+   - Gửi pump ON rồi OFF sau 1-2 giây.
+
+Nếu lỗi xuất hiện sau khi thêm module nào, tắt nguồn, tháo đúng module đó và
+kiểm tra lại cổng/dây. Cách này giúp tìm lỗi nhanh hơn lắp tất cả cùng lúc.
+
+
+======================================================================
+V. NẠP CHƯƠNG TRÌNH VÀO YOLO:BIT
+======================================================================
+
+Các file firmware cần dùng:
+
+  D:\DADN\microbit\main.py
+  D:\DADN\microbit\config.py
+  D:\DADN\microbit\dht20.py
+  D:\DADN\microbit\sensors.py
+  D:\DADN\microbit\actuators.py
+  D:\DADN\microbit\protocol.py
+
+Cách thực hiện:
+1. Mở Python Editor hỗ trợ Micro:bit/YOLO:BIT.
+2. Tạo dự án mới.
+3. Thêm đủ 6 file phía trên, giữ đúng tên file.
+4. Kiểm tra AREA_ID trong config.py. Mặc định:
+
+     AREA_ID = 1
+
+   AREA_ID=1 tương ứng Khu A. Nếu demo khu khác, đặt đúng ID của khu đó.
+5. Tải/xuất file HEX từ trình soạn thảo.
+6. Chép file HEX vào ổ MICROBIT.
+7. Chờ bo khởi động lại. Chương trình gửi dữ liệu mỗi 5 giây ở baud 115200.
+
+Gói dữ liệu dự kiến từ YOLO:BIT:
+
+  {"type":"sensor","area_id":1,"values":{"temperature":28.2,
+  "humidity":70,"light":610,"soil_moisture":62,
+  "distance_cm":8.4,"water_level":68}}
+
+
+======================================================================
+VI. HIỆU CHỈNH CẢM BIẾN TRƯỚC KHI DEMO
+======================================================================
+
+1. Độ ẩm đất:
+   - Đọc ADC khi hai que ở trạng thái khô.
+   - Đọc ADC khi cắm vào giá thể ẩm.
+   - Sửa hai giá trị trong microbit/config.py:
+
+       SOIL_DRY_RAW = giá trị khô
+       SOIL_WET_RAW = giá trị ẩm
+
+2. Mức nước bằng cảm biến khoảng cách:
+   - Đo khoảng cách từ cảm biến đến mặt nước khi bình đầy.
+   - Đo khoảng cách khi bình ở mức thấp nhất dùng để demo.
+   - Sửa:
+
+       TANK_FULL_DISTANCE_CM = khoảng cách khi đầy
+       TANK_EMPTY_DISTANCE_CM = khoảng cách khi cạn
+
+3. Ánh sáng:
+   - LIGHT_MAX_LUX chỉ dùng để quy đổi tương đối.
+   - Khi không có máy đo lux, nên trình bày là "mức sáng ước lượng".
+
+4. Relay:
+   - Gửi lệnh ON rồi quan sát relay.
+   - Nếu ON lại làm relay tắt, đổi RELAY_ACTIVE_LOW.
+
+Sau khi sửa config.py, xuất và nạp lại file HEX.
+
+
+======================================================================
+VII. CHẠY MQTT LOCAL, BACKEND VÀ GATEWAY TRONG WSL
+======================================================================
+
+Mở PowerShell để khởi động WSL. Không chạy lệnh "wsl" bên trong Ubuntu.
+
+A. Chạy MQTT Mosquitto local
+----------------------------
+
+Trong WSL:
+
+  cd /mnt/d/DADN
+  docker compose --profile local-mqtt up -d mosquitto
+
+Kiểm tra:
+
+  docker ps --filter name=green-argric-mosquitto
+
+B. Cấu hình backend
+-------------------
+
+  cd /mnt/d/DADN/backend
+  cp -n .env.example .env
+
+Trong backend/.env cần có:
+
+  DATA_MODE=memory
+  MQTT_ENABLED=true
+  MQTT_PROVIDER=local
+  MQTT_BROKER=mqtt://127.0.0.1:1883
+  MQTT_BASE_TOPIC=greenargric
+
+Chạy backend bằng cách đã cài dependency thành công trên máy. Nếu bản WSL ở
+~/green-argric-run đã có node_modules thì chạy:
+
+  cd ~/green-argric-run/backend
+  node index.js
+
+Backend cần hiện địa chỉ:
+
+  http://localhost:3000
+
+C. Cấu hình Python IoT Gateway
+------------------------------
+
+  cd /mnt/d/DADN/iot-gateway
+  cp -n .env.example .env
+  python3 -m pip install -r requirements.txt
+
+Trong iot-gateway/.env:
+
+  MQTT_PROVIDER=local
+  MQTT_BROKER=mqtt://127.0.0.1:1883
+  MQTT_BASE_TOPIC=greenargric
+  SERIAL_PORT=/dev/ttyACM0
+  SERIAL_BAUD=115200
+  AREA_ID=1
+
+Kiểm tra thiết bị:
+
+  bash ../scripts/check-device-wsl.sh
+
+Chạy Gateway:
+
+  python3 main.py
+
+Nếu /dev/ttyACM0 không tồn tại:
+- Có thể thiết bị đang là /dev/ttyACM1 hoặc /dev/ttyUSB0.
+- Chạy: ls -l /dev/ttyACM* /dev/ttyUSB* 2>/dev/null
+- Sửa SERIAL_PORT theo cổng tìm được.
+- Nếu WSL không thấy USB, chạy Gateway trên Windows với SERIAL_PORT=COMx.
+
+D. Chạy Gateway trực tiếp trên Windows khi WSL không nhận USB
+--------------------------------------------------------------
+
+Mở PowerShell:
+
+  cd D:\DADN\iot-gateway
+  py -m venv .venv
+  .\.venv\Scripts\Activate.ps1
+  pip install -r requirements.txt
+  Copy-Item .env.example .env
+
+Mở Device Manager -> Ports (COM & LPT), xem cổng của YOLO:BIT rồi đặt:
+
+  SERIAL_PORT=COM3
+
+Thay COM3 bằng cổng thật, sau đó chạy:
+
+  python main.py
+
+Nếu Mosquitto chạy trong WSL nhưng Gateway chạy Windows, kiểm tra Windows có
+truy cập được localhost:1883. Nếu không, chạy toàn bộ MQTT/backend/Gateway cùng
+một môi trường hoặc cấu hình đúng địa chỉ IP của WSL.
+
+
+======================================================================
+VIII. CHẠY FRONTEND VÀ KIỂM TRA TRÊN WEBSITE
+======================================================================
+
+Chạy frontend bằng bản đã cài dependency thành công, ví dụ trong WSL:
+
+  cd ~/green-argric-run/frontend
+  pnpm dev --host 0.0.0.0
+
+Mở:
+
+  http://localhost:5173
+
+Quy trình kiểm tra:
+1. Đăng nhập tài khoản có quyền xem Khu A.
+2. Mở trang Chỉ số môi trường.
+3. Xác nhận nhiệt độ, độ ẩm, ánh sáng, độ ẩm đất/mức nước cập nhật.
+4. Làm nóng nhẹ DHT20 bằng tay và quan sát nhiệt độ thay đổi.
+5. Che rồi chiếu sáng cảm biến để kiểm tra số đo ánh sáng.
+6. Di chuyển mặt phẳng dưới cảm biến khoảng cách để kiểm tra mức nước.
+7. Mở Điều khiển thiết bị và bật/tắt từng thiết bị:
+   - Bơm: pump.
+   - Quạt: fan.
+   - Relay/LED thử: grow_light.
+8. Mỗi lần bấm, kiểm tra đồng thời:
+   - Thiết bị thật thay đổi.
+   - Terminal Gateway nhận lệnh Serial.
+   - YOLO:BIT trả gói status.
+   - Website cập nhật trạng thái phản hồi.
+9. Tắt bơm, quạt và relay sau khi thử.
+
+
+======================================================================
+IX. GIAO THỨC DÙNG TRONG CODE
+======================================================================
+
+YOLO:BIT gửi dữ liệu cảm biến qua Serial:
+
+  {"type":"sensor","area_id":1,"values":{"temperature":28.2,
+  "humidity":70,"light":610,"water_level":68}}
+
+Gateway gửi lệnh xuống YOLO:BIT:
+
+  {"type":"command","device":"fan","state":"ON",
+  "source":"web"}
+
+YOLO:BIT phản hồi trạng thái:
+
+  {"type":"status","device":"fan","state":"ON","ok":true}
+
+Tên thiết bị code hiện đang hiểu:
+
+  pump          : bơm nước ở P14
+  fan           : quạt ở P16/P12
+  grow_light    : relay/tải thử ở P2
+  dosing_pump   : kênh dự phòng P15; không dùng trong demo hiện tại
+
+
+======================================================================
+X. KIỂM TRA TỪNG LỚP KHI CÓ LỖI
+======================================================================
+
+1. Không thấy cổng Serial:
+   - Đổi cáp USB khác có truyền dữ liệu.
+   - Thử cổng USB khác.
+   - Kiểm tra Device Manager hoặc /dev/ttyACM*.
+
+2. Có cổng nhưng không thấy JSON:
+   - Kiểm tra đã nạp đủ 6 file firmware.
+   - Kiểm tra SERIAL_BAUD=115200.
+   - Đóng cửa sổ Serial khác đang giữ cổng.
+
+3. DHT20 không có dữ liệu:
+   - Tắt nguồn, kiểm tra DHT20 ở I2C1.
+   - Xác nhận USE_DHT20=True.
+   - Thử tháo LCD để loại trừ lỗi bus I2C.
+
+4. Giá trị đất hoặc ánh sáng luôn 0/100%:
+   - Kiểm tra đúng P0/P1.
+   - Đo lại mốc hiệu chỉnh trong config.py.
+
+5. Mức nước bị ngược:
+   - Kiểm tra cảm biến hướng thẳng xuống mặt nước.
+   - TANK_FULL_DISTANCE_CM phải nhỏ hơn TANK_EMPTY_DISTANCE_CM.
+
+6. Relay hoạt động ngược:
+   - Đổi RELAY_ACTIVE_LOW trong config.py rồi nạp lại firmware.
+
+7. Website gửi lệnh nhưng thiết bị không đổi:
+   - Kiểm tra Backend đã kết nối MQTT.
+   - Kiểm tra Gateway đang chạy và subscribe topic lệnh.
+   - Kiểm tra Gateway có gửi JSON command xuống Serial.
+   - Kiểm tra tên device có đúng pump/fan/grow_light.
+
+8. Dữ liệu có ở Gateway nhưng không lên Web:
+   - Kiểm tra MQTT_BROKER và MQTT_BASE_TOPIC của Backend/Gateway giống nhau.
+   - Kiểm tra AREA_ID tồn tại và tài khoản được quyền xem khu tương ứng.
+   - Kiểm tra endpoint http://localhost:3000/integration/status.
+
+
+======================================================================
+XI. CHECKLIST TRƯỚC BUỔI DEMO
+======================================================================
+
+[ ] YOLO:BIT lắp đúng chiều vào mạch mở rộng.
+[ ] DHT20 ở I2C1; độ ẩm đất P0; ánh sáng P1.
+[ ] Khoảng cách ở P10/P13; relay P2.
+[ ] Bơm ở công tắc USB kênh P14; quạt ở P16/P12.
+[ ] Mạch và laptop cách xa nước.
+[ ] Đã nạp đủ 6 file firmware.
+[ ] Đã hiệu chỉnh mốc đất khô/ẩm và bình đầy/cạn.
+[ ] Serial chạy 115200 và Gateway nhận JSON mỗi 5 giây.
+[ ] Backend và Gateway dùng cùng MQTT Broker/base topic.
+[ ] Dữ liệu cảm biến thay đổi thật trên Website.
+[ ] Lệnh bơm/quạt/relay có phản hồi từ thiết bị thật.
+[ ] Không trình bày pH, EC/TDS hoặc bơm dinh dưỡng là thiết bị thật.
+[ ] Đã tắt toàn bộ tải sau khi kiểm tra.
+
+KẾT THÚC TÀI LIỆU

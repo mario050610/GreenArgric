@@ -50,7 +50,7 @@ class MicrobitSerial:
         self.connection = serial.Serial(port=port, baudrate=self.baud, timeout=self.timeout)
         time.sleep(2.0)
         self.connection.reset_input_buffer()
-        print(f'[serial] Connected to Micro:bit at {port} ({self.baud} baud)')
+        print(f'[serial] Connected to YOLO:BIT at {port} ({self.baud} baud)')
 
     def close(self) -> None:
         if self.connection:

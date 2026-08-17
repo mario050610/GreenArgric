@@ -39,6 +39,7 @@ export type Device = {
   mode: 'AUTO' | 'MANUAL';
   area_name?: string;
   last_seen?: string | null;
+  scheduled_off_at?: string | null;
 };
 
 export type Alert = {

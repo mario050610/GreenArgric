@@ -21,6 +21,7 @@ import userRoutes from './routes/user.js';
 import integrationRoutes from './routes/integration.js';
 import messageRoutes from './routes/message.js';
 import aiRoutes from './routes/ai.js';
+import weatherRoutes from './routes/weather.js';
 
 const app = express();
 app.use(cors({ origin: config.corsOrigin, credentials: true }));
@@ -46,6 +47,7 @@ app.use('/user', authRequired, userRoutes);
 app.use('/integration', authRequired, integrationRoutes);
 app.use('/message', authRequired, messageRoutes);
 app.use('/ai', authRequired, aiRoutes);
+app.use('/weather', authRequired, weatherRoutes);
 app.use(notFound);
 app.use(errorHandler);
 

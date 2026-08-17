@@ -5,7 +5,7 @@ import {
   Home, Sliders, History, Map, CheckCircle, Clock, Plus,
   Edit2, Trash2, Download, ChevronLeft, ChevronRight, Eye, EyeOff,
   ArrowUp, ArrowDown, ArrowRight, Lock, Zap, Gauge, Mail,
-  MessageCircle, Bot, Send, X, FileText, HelpCircle,
+  MessageCircle, Bot, Send, X, FileText, HelpCircle, CloudRain, CloudSun,
 } from "lucide-react";
 import {
   AreaChart, Area, BarChart, Bar, LineChart, Line,
@@ -183,6 +183,84 @@ function ArcGauge({ value, min, max, unit, color = "#2E7D32", size = 100 }: {
       <text x={cx} y={cy + 9 * sc} textAnchor="middle" fontSize={9 * sc} fill="#9CA3AF" fontFamily="Inter,system-ui,sans-serif">{unit}</text>
     </svg>
   );
+}
+
+type DailyWeather = {
+  date: string;
+  condition: string;
+  temperatureMax: number;
+  temperatureMin: number;
+  precipitation: number;
+  precipitationProbability: number;
+  windMax: number;
+  sunshineHours: number;
+};
+
+type LocationWeather = {
+  id: string;
+  name: string;
+  current: { temperature: number; apparentTemperature: number; humidity: number; windSpeed: number; weatherCode: number; condition: string };
+  forecast: DailyWeather[];
+  tips: Array<{ location: string; text: string }>;
+};
+
+type WeatherResponse = { date: string; updatedAt: string; source: string; locations: LocationWeather[] };
+
+function useDailyWeather() {
+  const [weather, setWeather] = useState<WeatherResponse | null>(null);
+  const [weatherError, setWeatherError] = useState('');
+  useEffect(() => {
+    let cancelled = false;
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+    fetch(`${apiUrl}/weather/daily`, { headers: { authorization: `Bearer ${localStorage.getItem('greenArgricToken')}` } })
+      .then(async response => {
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.message || 'Không tải được thời tiết');
+        if (!cancelled) setWeather(result);
+      })
+      .catch(error => { if (!cancelled) setWeatherError(error.message); });
+    return () => { cancelled = true; };
+  }, []);
+  return { weather, weatherError };
+}
+
+const WeatherIcon = ({ code, size = 20 }: { code: number; size?: number }) => code >= 51
+  ? <CloudRain size={size} />
+  : code >= 2
+    ? <CloudSun size={size} />
+    : <Sun size={size} />;
+
+function HeaderWeather() {
+  const { weather } = useDailyWeather();
+  const primary = weather?.locations[0];
+  if (!primary) return <div className="hidden xl:flex items-center gap-2 rounded-xl bg-gray-50 px-3 py-2 text-xs text-gray-400"><CloudSun size={16}/>Đang tải thời tiết</div>;
+  return <div className="hidden xl:flex items-center gap-2 rounded-xl bg-green-50 px-3 py-2 text-green-800" title={`Cập nhật ${new Date(weather.updatedAt).toLocaleString('vi-VN')}`}>
+    <WeatherIcon code={primary.current.weatherCode} size={18}/>
+    <div className="leading-tight"><div className="text-xs font-bold">{primary.name} · {Math.round(primary.current.temperature)}°C</div><div className="text-[10px] text-green-700">{primary.current.condition} · Ẩm {primary.current.humidity}%</div></div>
+  </div>;
+}
+
+function DailyWeatherOverview() {
+  const { weather, weatherError } = useDailyWeather();
+  if (weatherError) return <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">{weatherError}</div>;
+  if (!weather) return <div className="h-44 animate-pulse rounded-2xl bg-white shadow-sm"/>;
+  const tips = weather.locations.flatMap(location => location.tips).slice(0, 3);
+  return <section className="grid grid-cols-5 gap-5">
+    <div className="col-span-3 rounded-2xl bg-white p-5 shadow-sm">
+      <div className="mb-4 flex items-start justify-between gap-3"><div><h3 className="font-bold text-gray-800">Thời tiết khu vực hôm nay</h3><p className="mt-1 text-xs text-gray-400">Ngày {new Date(`${weather.date}T00:00:00`).toLocaleDateString('vi-VN')} · cập nhật tự động mỗi ngày</p></div><span className="rounded-full bg-sky-50 px-3 py-1 text-[10px] font-semibold text-sky-700">Nguồn {weather.source}</span></div>
+      <div className="grid grid-cols-3 gap-3">{weather.locations.map(location => <article key={location.id} className="rounded-xl border border-gray-100 bg-gradient-to-br from-sky-50 to-white p-4">
+        <div className="flex items-start justify-between"><div><div className="text-sm font-bold text-gray-800">{location.name}</div><div className="mt-1 text-xs text-gray-500">{location.current.condition}</div></div><span className="rounded-xl bg-white p-2 text-sky-600 shadow-sm"><WeatherIcon code={location.current.weatherCode}/></span></div>
+        <div className="mt-3 text-3xl font-extrabold text-gray-800">{Math.round(location.current.temperature)}°</div>
+        <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-gray-500"><span><Droplets size={11} className="inline"/> {location.current.humidity}%</span><span><Wind size={11} className="inline"/> {Math.round(location.current.windSpeed)} km/h</span><span><CloudRain size={11} className="inline"/> {location.forecast[0].precipitationProbability}%</span></div>
+        <div className="mt-3 border-t border-sky-100 pt-2 text-[11px] text-gray-500">Cao {Math.round(location.forecast[0].temperatureMax)}° · Thấp {Math.round(location.forecast[0].temperatureMin)}° · Mưa {location.forecast[0].precipitation.toFixed(1)} mm</div>
+      </article>)}</div>
+    </div>
+    <div className="col-span-2 rounded-2xl bg-gradient-to-br from-green-800 to-green-700 p-5 text-white shadow-sm">
+      <div className="flex items-center gap-2"><Leaf size={19}/><h3 className="font-bold">Mẹo chăm cây theo thời tiết</h3></div>
+      <p className="mt-1 text-xs text-green-100">Khuyến nghị được làm mới theo dự báo trong ngày.</p>
+      <div className="mt-4 space-y-3">{tips.map((tip, index) => <div key={`${tip.location}-${index}`} className="rounded-xl bg-white/10 p-3"><div className="text-[10px] font-bold uppercase tracking-wide text-green-200">{tip.location}</div><p className="mt-1 text-xs leading-5 text-white">{tip.text}</p></div>)}</div>
+    </div>
+  </section>;
 }
 
 // ── Sidebar ───────────────────────────────────────────────────────────────
@@ -518,6 +596,7 @@ function Header({ screen, role, onNavigate, onViewUser }: { screen: Screen; role
         <p className="text-xs text-gray-400">Cập nhật: 29/06/2026 · 10:45:22</p>
       </div>
       <div className="flex items-center gap-3">
+        <HeaderWeather />
         <div className="relative flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2 w-80">
           <Search size={14} className="text-gray-400 flex-shrink-0" />
           <input value={searchText} onChange={event => setSearchText(event.target.value)} onKeyDown={event => { if (event.key === "Enter") chooseFirstSearchResult(); if (event.key === "Escape") setSearchText(""); }} className="bg-transparent text-sm text-gray-600 outline-none w-full placeholder-gray-400" placeholder="Tìm tính năng hoặc tài khoản..." />
@@ -1038,9 +1117,8 @@ function _REMOVED_LoginAdminScreen({ onLogin, onBack }: { onLogin: () => void; o
 // ── Screen: Dashboard (role-adaptive) ─────────────────────────────────────
 
 function DashboardScreen({ role }: { role: Role }) {
-  if (role === "admin") return <AdminDashboardView />;
-  if (role === "tech") return <TechDashboardView />;
-  return <OwnerDashboardView />;
+  const dashboard = role === "admin" ? <AdminDashboardView /> : role === "tech" ? <TechDashboardView /> : <OwnerDashboardView />;
+  return <div className="space-y-5"><DailyWeatherOverview />{dashboard}</div>;
 }
 
 type TimeGranularity = "day" | "week" | "month" | "year";
@@ -1325,6 +1403,13 @@ function DevicesScreen({ role }: { role: Role }) {
 // Owner: device control with ON/OFF toggles grouped by zone
 function DeviceControlView() {
   const [devices, setDevices] = useState(DEVICES_INIT);
+  const [sensors, setSensors] = useState<any[]>([]);
+  const [autoOff, setAutoOff] = useState<Record<number, number>>({});
+  const [deadlines, setDeadlines] = useState<Record<number, number>>({});
+  const [apiError, setApiError] = useState("");
+  const [lcdSelection, setLcdSelection] = useState("auto");
+  const [lcdNotice, setLcdNotice] = useState("");
+  const [now, setNow] = useState(Date.now());
   const [statusFilter, setStatusFilter] = useState<"all" | "on" | "off">("all");
   const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:3000";
   const apiHeaders = () => ({ "content-type": "application/json", authorization: `Bearer ${localStorage.getItem("greenArgricToken")}` });
@@ -1336,15 +1421,62 @@ function DeviceControlView() {
       const existing = DEVICES_INIT.find(item => item.name === device.device_name && item.zone === device.area_name);
       const type = device.device_type === "grow_light" ? "light" : device.device_type === "fan" ? "fan" : device.device_type === "dosing_pump" ? "dosing" : "pump";
       return { id: device.device_id, name: device.device_name, zone: device.area_name || "Chưa phân khu", type, on: device.status === "ON", mode: String(device.mode || "MANUAL").toLowerCase(), watt: existing?.watt ?? 0, lastRun: device.last_seen ? new Date(device.last_seen).toLocaleString("vi-VN") : "Chưa ghi nhận" };
-    }))).catch(() => setDevices([]));
+    }))).catch(error => setApiError(error.message || "Backend chưa kết nối"));
+  }, []);
+  useEffect(() => {
+    const load = () => {
+      Promise.all([
+        fetch(`${apiUrl}/sensor/area/1/latest`, { headers: apiHeaders() }),
+        fetch(`${apiUrl}/device`, { headers: apiHeaders() }),
+      ]).then(async ([sensorResponse, deviceResponse]) => {
+          if (!sensorResponse.ok) throw new Error((await sensorResponse.json()).message || "Không tải được cảm biến");
+          if (!deviceResponse.ok) throw new Error((await deviceResponse.json()).message || "Không tải được thiết bị");
+          return { sensorRows: await sensorResponse.json(), deviceRows: await deviceResponse.json() };
+        })
+        .then(({ sensorRows, deviceRows }) => {
+          const liveTypes = ["light", "motion"];
+          setSensors(sensorRows.filter((sensor: any) => liveTypes.includes(sensor.sensor_type) && sensor.value !== null));
+          setDevices(deviceRows.map((device: any) => {
+            const existing = DEVICES_INIT.find(item => item.name === device.device_name && item.zone === device.area_name);
+            const type = device.device_type === "grow_light" ? "light" : device.device_type === "fan" ? "fan" : device.device_type === "dosing_pump" ? "dosing" : "pump";
+            return { id: device.device_id, name: device.device_name, zone: device.area_name || "Chưa phân khu", type, on: device.status === "ON", mode: String(device.mode || "MANUAL").toLowerCase(), watt: existing?.watt ?? 0, lastRun: device.last_seen ? new Date(device.last_seen).toLocaleString("vi-VN") : "Chưa ghi nhận" };
+          }));
+          setApiError("");
+        })
+        .catch(error => setApiError(error.message || "Backend chưa kết nối"));
+    };
+    load();
+    const refresh = window.setInterval(load, 1000);
+    const clock = window.setInterval(() => setNow(Date.now()), 250);
+    return () => { window.clearInterval(refresh); window.clearInterval(clock); };
   }, []);
   const toggle = async (id: number) => {
     const current = devices.find(device => device.id === id);
     if (!current) return;
-    const response = await fetch(`${apiUrl}/device/override`, { method: "POST", headers: apiHeaders(), body: JSON.stringify({ device_id: id, state: current.on ? "OFF" : "ON", control_mode: "MANUAL" }) });
+    const seconds = current.on ? 0 : Math.max(0, Number(autoOff[id] || 0));
+    const response = await fetch(`${apiUrl}/device/override`, { method: "POST", headers: apiHeaders(), body: JSON.stringify({ device_id: id, state: current.on ? "OFF" : "ON", control_mode: "MANUAL", auto_off_seconds: seconds }) });
     const result = await response.json();
     if (!response.ok) return window.alert(result.message || "Không thể điều khiển thiết bị");
-    setDevices(rows => rows.map(device => device.id === id ? { ...device, on: result.device?.status === "ON", lastRun: "Vừa xong" } : device));
+    const requestedOn = !current.on;
+    setDevices(rows => rows.map(device => device.id === id ? { ...device, on: requestedOn, lastRun: "Vừa xong" } : device));
+    if (!current.on && seconds > 0) {
+      setDeadlines(values => ({ ...values, [id]: Date.now() + seconds * 1000 }));
+      window.setTimeout(() => {
+        setDevices(rows => rows.map(device => device.id === id ? { ...device, on: false, lastRun: "Vừa tự tắt" } : device));
+        setDeadlines(values => { const next = { ...values }; delete next[id]; return next; });
+      }, seconds * 1000 + 500);
+    } else {
+      setDeadlines(values => { const next = { ...values }; delete next[id]; return next; });
+    }
+  };
+  const showOnLcd = async (sensor = lcdSelection) => {
+    setLcdSelection(sensor);
+    const response = await fetch(`${apiUrl}/integration/lcd`, {
+      method: "POST", headers: apiHeaders(), body: JSON.stringify({ area_id: 1, sensor }),
+    });
+    const result = await response.json();
+    if (!response.ok) return window.alert(result.message || "Không gửi được lệnh LCD");
+    setLcdNotice(sensor === "auto" ? "LCD đang tự động luân phiên" : "LCD đang hiển thị riêng cảm biến đã chọn");
   };
   const typeIcon: Record<string, any> = { pump: Droplets, light: Sun, fan: Wind, dosing: Zap };
   const modeStyle: Record<string, { bg: string; color: string; label: string }> = {
@@ -1358,6 +1490,28 @@ function DeviceControlView() {
 
   return (
     <div className="space-y-5">
+      {apiError && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">Không kết nối được backend: {apiError}</div>}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <div className="font-semibold text-gray-800">Cảm biến trực tiếp Khu A</div>
+          <div className="flex items-center gap-2">
+            <select value={lcdSelection} onChange={event => setLcdSelection(event.target.value)} className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm">
+              <option value="auto">Tự động luân phiên</option>
+              <option value="light">Ánh sáng P0</option>
+              <option value="motion">Trạng thái chuyển động</option>
+            </select>
+            <button onClick={() => showOnLcd()} className="rounded-xl bg-green-700 px-4 py-2 text-sm font-semibold text-white">Hiển thị trên LCD</button>
+          </div>
+        </div>
+        {lcdNotice && <div className="mb-3 rounded-xl bg-green-50 px-3 py-2 text-xs font-semibold text-green-700">{lcdNotice}</div>}
+        <div className="grid grid-cols-4 gap-3">
+          {sensors.map(sensor => <div key={sensor.sensor_id} className="bg-white rounded-2xl p-4 shadow-sm">
+            <div className="flex justify-between text-xs text-gray-500"><span>{({ light: "Cường độ ánh sáng", motion: "Trạng thái chuyển động" } as Record<string, string>)[sensor.sensor_type] || sensor.sensor_type}</span><span className="text-green-600 font-semibold">● LIVE</span></div>
+            <div className="text-2xl font-bold text-gray-800 mt-2">{sensor.sensor_type === "motion" ? (Number(sensor.value) ? "Có chuyển động" : "Không phát hiện") : sensor.value} <span className="text-sm font-normal text-gray-400">{sensor.unit}</span></div>
+            <button onClick={() => showOnLcd(sensor.sensor_type)} className="mt-3 w-full rounded-lg bg-green-700 px-3 py-1.5 text-xs font-semibold text-white">Hiển thị trên LCD</button>
+          </div>)}
+        </div>
+      </div>
       <div className="grid grid-cols-4 gap-4">
         {[
           { l: "Tổng thiết bị", v: devices.length, c: "#1F2937", bg: "white" },
@@ -1397,6 +1551,9 @@ function DeviceControlView() {
               </div>
               <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
                 <Toggle on={d.on} onChange={() => toggle(d.id)} />
+                <label className="mt-1 text-[10px] text-gray-500">Tự tắt (giây)</label>
+                <input type="number" min="0" max="86400" value={autoOff[d.id] ?? 0} onFocus={event => event.currentTarget.select()} onChange={event => setAutoOff(values => ({ ...values, [d.id]: Number(event.target.value) }))} className="w-24 rounded-lg border border-gray-200 px-2 py-1 text-xs" />
+                {deadlines[d.id] > now && <span className="text-[10px] font-semibold text-blue-600">Còn {Math.ceil((deadlines[d.id] - now) / 1000)} giây</span>}
                 <span className={`text-xs font-semibold ${d.on ? "text-green-600" : "text-gray-400"}`}>
                   {d.on ? "Đang bật" : "Đang tắt"}
                 </span>
@@ -5205,7 +5362,13 @@ function MessagesScreen({ initialContactId, onViewProfile }: { initialContactId?
     if (contact?.online) return "Đang hoạt động";
     if (!contact?.last_active_at) return "Chưa ghi nhận hoạt động";
     const minutes = Math.max(1, Math.floor((Date.now() - new Date(contact.last_active_at).getTime()) / 60000));
-    return `Hoạt động ${minutes} phút trước`;
+    if (minutes < 60) return `Hoạt động ${minutes} phút trước`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `Hoạt động ${hours} giờ trước`;
+    const days = Math.floor(hours / 24);
+    if (days < 7) return `Hoạt động ${days} ngày trước`;
+    const weeks = Math.floor(days / 7);
+    return `Hoạt động ${weeks} tuần trước`;
   };
   const changeMode = (next: "people" | "ai") => { setMode(next); if (next === "ai") { try { const saved = JSON.parse(localStorage.getItem(aiStorageKey) || "[]"); setItems(Array.isArray(saved) && saved.length ? saved : [aiGreeting]); } catch { setItems([aiGreeting]); } } else if (selected) void loadConversation(selected); };
   const clearConversation = async () => {
