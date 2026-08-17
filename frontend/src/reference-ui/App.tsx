@@ -5316,7 +5316,15 @@ function UserDirectoryProfile({ user, onMessage, onBack }: { user: any; onMessag
 }
 
 function MessageText({ text }: { text: string }) {
-  return <div className="whitespace-pre-wrap leading-6 [word-spacing:0.04em]">{String(text).split(/(https?:\/\/[^\s]+)/g).map((part, index) => /^https?:\/\//.test(part) ? <a key={index} href={part} target="_blank" rel="noreferrer" className="inline-block underline font-semibold">Mở bài viết tham khảo</a> : <span key={index}>{part}</span>)}</div>;
+  const readableText = String(text)
+    .replace(/\\(?:d?frac)\{([^{}]+)\}\{([^{}]+)\}/g, '$1/$2')
+    .replace(/\\boxed\{([^{}]+)\}/g, '$1')
+    .replace(/\\sqrt\{([^{}]+)\}/g, '√($1)')
+    .replace(/\^\{([^{}]+)\}/g, '^$1')
+    .replace(/\\(?:left|right)([()[\]{}|])/g, '$1')
+    .replace(/\\(?:times|cdot)/g, '×')
+    .replace(/\\(?:\[|\]|\(|\))/g, '');
+  return <div className="whitespace-pre-wrap leading-6 [word-spacing:0.04em]">{readableText.split(/(https?:\/\/[^\s]+)/g).map((part, index) => /^https?:\/\//.test(part) ? <a key={index} href={part} target="_blank" rel="noreferrer" className="inline-block underline font-semibold">Mở bài viết tham khảo</a> : <span key={index}>{part}</span>)}</div>;
 }
 
 function MessagesScreen({ initialContactId, onViewProfile }: { initialContactId?: number | null; onViewProfile: (user: any) => void }) {
