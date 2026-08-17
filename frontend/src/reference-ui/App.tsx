@@ -5,7 +5,7 @@ import {
   Home, Sliders, History, Map, CheckCircle, Clock, Plus,
   Edit2, Trash2, Download, ChevronLeft, ChevronRight, Eye, EyeOff,
   ArrowUp, ArrowDown, ArrowRight, Lock, Zap, Gauge, Mail,
-  MessageCircle, Bot, Send, X, FileText, HelpCircle,
+  MessageCircle, Bot, Send, X, FileText, HelpCircle, CloudRain, CloudSun,
 } from "lucide-react";
 import {
   AreaChart, Area, BarChart, Bar, LineChart, Line,
@@ -183,6 +183,84 @@ function ArcGauge({ value, min, max, unit, color = "#2E7D32", size = 100 }: {
       <text x={cx} y={cy + 9 * sc} textAnchor="middle" fontSize={9 * sc} fill="#9CA3AF" fontFamily="Inter,system-ui,sans-serif">{unit}</text>
     </svg>
   );
+}
+
+type DailyWeather = {
+  date: string;
+  condition: string;
+  temperatureMax: number;
+  temperatureMin: number;
+  precipitation: number;
+  precipitationProbability: number;
+  windMax: number;
+  sunshineHours: number;
+};
+
+type LocationWeather = {
+  id: string;
+  name: string;
+  current: { temperature: number; apparentTemperature: number; humidity: number; windSpeed: number; weatherCode: number; condition: string };
+  forecast: DailyWeather[];
+  tips: Array<{ location: string; text: string }>;
+};
+
+type WeatherResponse = { date: string; updatedAt: string; source: string; locations: LocationWeather[] };
+
+function useDailyWeather() {
+  const [weather, setWeather] = useState<WeatherResponse | null>(null);
+  const [weatherError, setWeatherError] = useState('');
+  useEffect(() => {
+    let cancelled = false;
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+    fetch(`${apiUrl}/weather/daily`, { headers: { authorization: `Bearer ${localStorage.getItem('greenArgricToken')}` } })
+      .then(async response => {
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.message || 'Không tải được thời tiết');
+        if (!cancelled) setWeather(result);
+      })
+      .catch(error => { if (!cancelled) setWeatherError(error.message); });
+    return () => { cancelled = true; };
+  }, []);
+  return { weather, weatherError };
+}
+
+const WeatherIcon = ({ code, size = 20 }: { code: number; size?: number }) => code >= 51
+  ? <CloudRain size={size} />
+  : code >= 2
+    ? <CloudSun size={size} />
+    : <Sun size={size} />;
+
+function HeaderWeather() {
+  const { weather } = useDailyWeather();
+  const primary = weather?.locations[0];
+  if (!primary) return <div className="hidden xl:flex items-center gap-2 rounded-xl bg-gray-50 px-3 py-2 text-xs text-gray-400"><CloudSun size={16}/>Đang tải thời tiết</div>;
+  return <div className="hidden xl:flex items-center gap-2 rounded-xl bg-green-50 px-3 py-2 text-green-800" title={`Cập nhật ${new Date(weather.updatedAt).toLocaleString('vi-VN')}`}>
+    <WeatherIcon code={primary.current.weatherCode} size={18}/>
+    <div className="leading-tight"><div className="text-xs font-bold">{primary.name} · {Math.round(primary.current.temperature)}°C</div><div className="text-[10px] text-green-700">{primary.current.condition} · Ẩm {primary.current.humidity}%</div></div>
+  </div>;
+}
+
+function DailyWeatherOverview() {
+  const { weather, weatherError } = useDailyWeather();
+  if (weatherError) return <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">{weatherError}</div>;
+  if (!weather) return <div className="h-44 animate-pulse rounded-2xl bg-white shadow-sm"/>;
+  const tips = weather.locations.flatMap(location => location.tips).slice(0, 3);
+  return <section className="grid grid-cols-5 gap-5">
+    <div className="col-span-3 rounded-2xl bg-white p-5 shadow-sm">
+      <div className="mb-4 flex items-start justify-between gap-3"><div><h3 className="font-bold text-gray-800">Thời tiết khu vực hôm nay</h3><p className="mt-1 text-xs text-gray-400">Ngày {new Date(`${weather.date}T00:00:00`).toLocaleDateString('vi-VN')} · cập nhật tự động mỗi ngày</p></div><span className="rounded-full bg-sky-50 px-3 py-1 text-[10px] font-semibold text-sky-700">Nguồn {weather.source}</span></div>
+      <div className="grid grid-cols-3 gap-3">{weather.locations.map(location => <article key={location.id} className="rounded-xl border border-gray-100 bg-gradient-to-br from-sky-50 to-white p-4">
+        <div className="flex items-start justify-between"><div><div className="text-sm font-bold text-gray-800">{location.name}</div><div className="mt-1 text-xs text-gray-500">{location.current.condition}</div></div><span className="rounded-xl bg-white p-2 text-sky-600 shadow-sm"><WeatherIcon code={location.current.weatherCode}/></span></div>
+        <div className="mt-3 text-3xl font-extrabold text-gray-800">{Math.round(location.current.temperature)}°</div>
+        <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-gray-500"><span><Droplets size={11} className="inline"/> {location.current.humidity}%</span><span><Wind size={11} className="inline"/> {Math.round(location.current.windSpeed)} km/h</span><span><CloudRain size={11} className="inline"/> {location.forecast[0].precipitationProbability}%</span></div>
+        <div className="mt-3 border-t border-sky-100 pt-2 text-[11px] text-gray-500">Cao {Math.round(location.forecast[0].temperatureMax)}° · Thấp {Math.round(location.forecast[0].temperatureMin)}° · Mưa {location.forecast[0].precipitation.toFixed(1)} mm</div>
+      </article>)}</div>
+    </div>
+    <div className="col-span-2 rounded-2xl bg-gradient-to-br from-green-800 to-green-700 p-5 text-white shadow-sm">
+      <div className="flex items-center gap-2"><Leaf size={19}/><h3 className="font-bold">Mẹo chăm cây theo thời tiết</h3></div>
+      <p className="mt-1 text-xs text-green-100">Khuyến nghị được làm mới theo dự báo trong ngày.</p>
+      <div className="mt-4 space-y-3">{tips.map((tip, index) => <div key={`${tip.location}-${index}`} className="rounded-xl bg-white/10 p-3"><div className="text-[10px] font-bold uppercase tracking-wide text-green-200">{tip.location}</div><p className="mt-1 text-xs leading-5 text-white">{tip.text}</p></div>)}</div>
+    </div>
+  </section>;
 }
 
 // ── Sidebar ───────────────────────────────────────────────────────────────
@@ -518,6 +596,7 @@ function Header({ screen, role, onNavigate, onViewUser }: { screen: Screen; role
         <p className="text-xs text-gray-400">Cập nhật: 29/06/2026 · 10:45:22</p>
       </div>
       <div className="flex items-center gap-3">
+        {screen === 'dashboard' && <HeaderWeather />}
         <div className="relative flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2 w-80">
           <Search size={14} className="text-gray-400 flex-shrink-0" />
           <input value={searchText} onChange={event => setSearchText(event.target.value)} onKeyDown={event => { if (event.key === "Enter") chooseFirstSearchResult(); if (event.key === "Escape") setSearchText(""); }} className="bg-transparent text-sm text-gray-600 outline-none w-full placeholder-gray-400" placeholder="Tìm tính năng hoặc tài khoản..." />
@@ -1038,9 +1117,8 @@ function _REMOVED_LoginAdminScreen({ onLogin, onBack }: { onLogin: () => void; o
 // ── Screen: Dashboard (role-adaptive) ─────────────────────────────────────
 
 function DashboardScreen({ role }: { role: Role }) {
-  if (role === "admin") return <AdminDashboardView />;
-  if (role === "tech") return <TechDashboardView />;
-  return <OwnerDashboardView />;
+  const dashboard = role === "admin" ? <AdminDashboardView /> : role === "tech" ? <TechDashboardView /> : <OwnerDashboardView />;
+  return <div className="space-y-5"><DailyWeatherOverview />{dashboard}</div>;
 }
 
 type TimeGranularity = "day" | "week" | "month" | "year";
