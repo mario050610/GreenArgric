@@ -596,7 +596,7 @@ function Header({ screen, role, onNavigate, onViewUser }: { screen: Screen; role
         <p className="text-xs text-gray-400">Cập nhật: 29/06/2026 · 10:45:22</p>
       </div>
       <div className="flex items-center gap-3">
-        {screen === 'dashboard' && <HeaderWeather />}
+        <HeaderWeather />
         <div className="relative flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2 w-80">
           <Search size={14} className="text-gray-400 flex-shrink-0" />
           <input value={searchText} onChange={event => setSearchText(event.target.value)} onKeyDown={event => { if (event.key === "Enter") chooseFirstSearchResult(); if (event.key === "Escape") setSearchText(""); }} className="bg-transparent text-sm text-gray-600 outline-none w-full placeholder-gray-400" placeholder="Tìm tính năng hoặc tài khoản..." />
