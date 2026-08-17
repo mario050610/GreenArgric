@@ -14,11 +14,11 @@ Website → Backend → MQTT → Python Gateway → YOLO:BIT
 
 1. Rút cáp USB, lắp YOLO:BIT đúng chiều vào mạch mở rộng.
 2. Cắm DHT20 vào I2C1 và LCD 16x2 (nếu cần) vào I2C2.
-3. Cắm cảm biến độ ẩm đất vào P0 và cảm biến ánh sáng vào P1.
+3. Cắm cảm biến ánh sáng vào P0 và cảm biến độ ẩm đất vào P1.
 4. Cắm relay mini vào P2. Chỉ dùng LED/tải điện áp thấp để thử.
-5. Cắm cảm biến khoảng cách vào cụm P10/P13, hướng hai mắt cảm biến thẳng xuống mặt nước.
-6. Cắm công tắc USB hai kênh vào P14/P15. Cắm bơm vào kênh P14; kênh P15 để dự phòng.
-7. Cắm quạt mini vào P16/P12.
+5. Cắm quạt mini vào cụm P10/P13.
+6. Cắm cảm biến khoảng cách vào cụm P14/P15, hướng hai mắt cảm biến thẳng xuống mặt nước.
+6. Cắm công tắc USB hai kênh vào P3/P6. USB_OUTPUT1 dùng P3; USB_OUTPUT2 dùng P6.
 8. Kiểm tra lại toàn bộ dây, sau đó mới nối cáp USB với laptop.
 
 ## Cổng được dùng
@@ -27,13 +27,13 @@ Website → Backend → MQTT → Python Gateway → YOLO:BIT
 |---|---|---|
 | I2C1 | DHT20 | temperature, humidity |
 | I2C2 | LCD 16x2 tùy chọn | hiển thị tại mô hình |
-| P0 | Độ ẩm đất | soil_moisture (%) |
-| P1 | Ánh sáng | light (lux ước lượng) |
+| P0 | Ánh sáng | light (lux ước lượng) |
+| P1 | Độ ẩm đất | soil_moisture (%) |
 | P2 | Relay mini | grow_light ON/OFF |
-| P10/P13 | Khoảng cách | distance_cm, water_level (%) |
-| P14 | USB kênh 1 | pump ON/OFF |
-| P15 | USB kênh 2 | dosing_pump ON/OFF |
-| P16/P12 | Quạt mini | fan ON/OFF |
+| P10/P13 | Quạt mini | fan ON/OFF |
+| P14/P15 | Khoảng cách | distance_cm, water_level (%) |
+| P3 | USB_OUTPUT1 | pump ON/OFF |
+| P6 | USB_OUTPUT2 | dosing_pump ON/OFF |
 
 ## Kiểm tra nhanh
 

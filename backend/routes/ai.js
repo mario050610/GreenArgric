@@ -26,6 +26,51 @@ export const isFarmingQuestion = (question) => {
     || /\btrong\b.*\b(cay|rau|cu|qua|hoa|lua|dat|vuon)\b/.test(normalized);
 };
 
+export const isWeatherQuestion = (question) => {
+  const normalized = normalizeVietnamese(question);
+  const explicitWeather = /(thoi tiet|khi tuong|bao nhiet doi|nhiet do ngoai troi|do am ngoai troi|gio bao)/.test(normalized);
+  const skyCondition = /\btroi\b.*\b(mua|nang|ram|lanh|nong)\b|\b(co|se)\s+(?:[a-z]+\s+){0,2}mua\b/.test(normalized);
+  return explicitWeather || skyCondition;
+};
+
+const dateInVietnam = (now = new Date()) => {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(now);
+  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return new Date(Date.UTC(Number(value.year), Number(value.month) - 1, Number(value.day)));
+};
+
+export function resolveWeatherTarget(question, now = new Date()) {
+  const normalized = normalizeVietnamese(question);
+  let offsetDays = null;
+  let phrase = '';
+  if (/\bhom nay\b/.test(normalized)) {
+    offsetDays = 0;
+    phrase = 'hôm nay';
+  } else if (/\b(ngay mai|hom sau)\b/.test(normalized)) {
+    offsetDays = 1;
+    phrase = 'ngày mai';
+  } else if (/\b(hom qua|ngay hom qua)\b/.test(normalized)) {
+    offsetDays = -1;
+    phrase = 'hôm qua';
+  } else {
+    const relative = normalized.match(/\b(\d+)\s*ngay\s*(truoc|qua|sau|toi|nua)\b/);
+    if (relative) {
+      const amount = Number(relative[1]);
+      const direction = ['truoc', 'qua'].includes(relative[2]) ? -1 : 1;
+      offsetDays = amount * direction;
+      phrase = `${amount} ngày ${direction < 0 ? 'trước' : 'sau'}`;
+    }
+  }
+  if (offsetDays === null) return null;
+  const date = dateInVietnam(now);
+  date.setUTCDate(date.getUTCDate() + offsetDays);
+  const day = String(date.getUTCDate()).padStart(2, '0');
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  return { offsetDays, phrase, isoDate: `${date.getUTCFullYear()}-${month}-${day}`, displayDate: `${day}/${month}/${date.getUTCFullYear()}` };
+}
+
 export const isInternalSystemQuestion = (question) => {
   const normalized = normalizeVietnamese(question);
   // Trong GREEN ARGRIC, "vườn", "khu vườn" và "khu" đều là cách gọi
@@ -316,6 +361,13 @@ const formatPlainAnswer = (answer) => String(answer || '').normalize('NFC')
   .replace(/(?:Các bước này được thực hiện )?(?:dựa trên|theo) (?:hướng dẫn từ )?nguồn:\s*https?:\/\/\S+\.?/giu, '')
   .replace(/^\s*\*\s+/gm, '- ')
   .replace(/^\s*#{1,6}\s+/gm, '')
+  .replace(/\n{3,}/g, '\n\n')
+  .trim();
+
+export const formatWeatherAnswer = (answer) => formatPlainAnswer(answer)
+  .replace(/[ \t]+-\s+(?=\p{L})/gu, '\n- ')
+  .replace(/[ \t]+-\s*(?=(?:Nhiệt độ|Cảm giác|Độ ẩm|Gió|Mưa|Khả năng mưa|Chỉ số UV|Tầm nhìn|Khuyến nghị|Lưu ý|Cảnh báo)\s*:)/giu, '\n- ')
+  .replace(/^(?=(?:Nhiệt độ|Cảm giác|Độ ẩm|Gió|Mưa|Khả năng mưa|Chỉ số UV|Tầm nhìn|Khuyến nghị|Lưu ý|Cảnh báo)\s*:)/gimu, '- ')
   .replace(/\n{3,}/g, '\n\n')
   .trim();
 
@@ -778,6 +830,14 @@ router.post('/chat', async (req, res) => {
       content: String(item.content).replace(/\n+(?:Nguồn tham khảo đã đối chiếu|Tham khảo thêm tại link):[\s\S]*$/i, '').trim().slice(0, 1600),
     }));
   if (!message) return res.status(400).json({ message: 'Nội dung câu hỏi là bắt buộc' });
+  const weatherQuestion = isWeatherQuestion(message);
+  const weatherTarget = weatherQuestion ? resolveWeatherTarget(message) : null;
+  if (weatherQuestion && !weatherTarget) {
+    return res.status(400).json({
+      message: 'Bạn muốn xem thời tiết vào thời điểm nào? Hãy ghi rõ hôm nay, ngày mai, x ngày trước hoặc x ngày sau.',
+      code: 'WEATHER_TIME_REQUIRED',
+    });
+  }
   const continuesInternalConversation = followsPreviousQuestion
     && history.some((item) => isInternalSystemQuestion(item.content));
   if (isInternalSystemQuestion(message) || continuesInternalConversation) {
@@ -789,7 +849,10 @@ router.post('/chat', async (req, res) => {
     if (systemDataAnswer) return res.json({ reply: formatPlainAnswer(systemDataAnswer), provider: 'system', source: 'green-argric-data', sources: [] });
     return res.json({ reply: 'Chưa có dữ liệu nội bộ phù hợp để trả lời câu hỏi này.', provider: 'system', source: 'green-argric-data', sources: [] });
   }
-  const webSources = selectSourcesForQuestion(message, await searchWebSources(message));
+  const groundedQuestion = weatherTarget
+    ? `${message} (mốc thời gian cần trả lời: ${weatherTarget.phrase}, ngày ${weatherTarget.displayDate})`
+    : message;
+  const webSources = selectSourcesForQuestion(message, await searchWebSources(groundedQuestion));
   if (!webSources.length) return res.status(503).json({ message: config.ai.tavilyApiKey ? 'Chưa tìm được bài viết phù hợp để kiểm chứng câu trả lời. Bạn hãy mô tả câu hỏi cụ thể hơn.' : 'Chưa cấu hình TAVILY_API_KEY nên trợ lý không thể tìm nguồn kiểm chứng.', code: 'VERIFIED_SOURCE_UNAVAILABLE' });
   const structuredRecipe = answerStructuredRecipe(message, webSources[0]);
   if (structuredRecipe) return res.json({ reply: appendVerifiedSources(structuredRecipe, webSources), provider: 'system', source: 'verified-recipe', sources: webSources });
@@ -801,7 +864,7 @@ Với câu hỏi hướng dẫn, sắp xếp thành các bước theo đúng th�
 Dùng văn bản thuần, mỗi ý một dòng, không dùng Markdown và không tự tạo URL. Sửa các từ bị mất dấu trong dữ liệu trích xuất và luôn viết đúng chính tả tiếng Việt theo ngữ cảnh.
 Trình bày câu trả lời trực tiếp cùng các căn cứ, điều kiện và chi tiết cần thiết. Không tạo tiêu đề "Kết quả" hoặc "Giải thích". Không tự viết phần nguồn vì hệ thống sẽ gắn nguồn sau.
 verifiedWebSources: ${JSON.stringify(webSources)}`;
-  const messages = [{ role: 'system', content: system }, ...history.map((item) => ({ role: item.role === 'assistant' ? 'assistant' : 'user', content: String(item.content || '') })), { role: 'user', content: message }];
+  const messages = [{ role: 'system', content: system }, ...history.map((item) => ({ role: item.role === 'assistant' ? 'assistant' : 'user', content: String(item.content || '') })), { role: 'user', content: groundedQuestion }];
   try {
     if (config.ai.provider === 'ollama') {
       const { response, result } = await requestOllama(messages, { question: message, sources: webSources });
@@ -824,6 +887,7 @@ verifiedWebSources: ${JSON.stringify(webSources)}`;
         if (completeReply && !/^Chưa có đủ nguồn phù hợp/i.test(completeReply)) reply = enforceQuestionScope(message, completeReply);
       }
       reply = removeUnsupportedDirectionalDetails(reply, webSources) || 'Nguồn hiện có chưa đủ để xác nhận chính xác chiều của quá trình được hỏi.';
+      if (weatherQuestion) reply = formatWeatherAnswer(reply);
       return res.json({ reply: appendVerifiedSources(reply, webSources), model: config.ai.ollamaModel, provider: 'ollama', sources: webSources });
     }
     if (!config.openai.apiKey) return res.status(503).json({ message: 'Chưa cấu hình OPENAI_API_KEY', code: 'AI_NOT_CONFIGURED' });
@@ -834,11 +898,12 @@ verifiedWebSources: ${JSON.stringify(webSources)}`;
     let reply = enforceQuestionScope(message, output || 'AI chưa tạo được nội dung trả lời.');
     reply = validateRecipeAgainstSource(message, reply, webSources[0]);
     reply = removeUnsupportedDirectionalDetails(reply, webSources) || 'Nguồn hiện có chưa đủ để xác nhận chính xác chiều của quá trình được hỏi.';
+    if (weatherQuestion) reply = formatWeatherAnswer(reply);
     return res.json({ reply: appendVerifiedSources(reply, webSources), model: config.openai.model, provider: 'openai', sources: webSources });
   } catch (error) {
     const usingOllama = config.ai.provider === 'ollama';
     const verifiedSummary = webSources.find((source) => source.summary)?.summary;
-    if (verifiedSummary && !isPredominantlyEnglish(verifiedSummary)) return res.json({ reply: appendVerifiedSources(verifiedSummary, webSources), provider: 'tavily', source: 'verified-web-fallback', sources: webSources });
+    if (verifiedSummary && !isPredominantlyEnglish(verifiedSummary)) return res.json({ reply: appendVerifiedSources(weatherQuestion ? formatWeatherAnswer(verifiedSummary) : verifiedSummary, webSources), provider: 'tavily', source: 'verified-web-fallback', sources: webSources });
     return res.status(503).json({ message: usingOllama ? 'Không kết nối được Ollama. Hãy chạy ollama serve và tải model đã cấu hình.' : 'Không kết nối được OpenAI.', code: usingOllama ? 'OLLAMA_UNAVAILABLE' : 'OPENAI_UNAVAILABLE', detail: error.message });
   }
 });

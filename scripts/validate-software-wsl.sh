@@ -5,6 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
 python3 microbit/tests/test_protocol.py
+python3 microbit/tests/test_lcd1602.py
 python3 iot-gateway/tests/test_switch_protocol.py
 python3 -m compileall -q iot-gateway microbit
 

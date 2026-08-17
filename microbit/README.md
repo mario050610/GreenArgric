@@ -5,11 +5,11 @@ Firmware này được cấu hình cho đúng bộ OhStem trong ảnh của nhó
 ## Chức năng
 
 - Đọc DHT20 qua I2C (nhiệt độ, độ ẩm không khí).
-- Đọc cảm biến ánh sáng ngoài ở P1.
-- Đọc cảm biến độ ẩm đất ở P0 và hiệu chuẩn theo mốc khô/ướt.
-- Đọc cảm biến khoảng cách ở P10/P13, quy đổi thành phần trăm mực nước.
-- Điều khiển bơm nước và một tải dự phòng qua công tắc USB hai kênh P14/P15.
-- Điều khiển quạt mini bằng cặp chân P16/P12.
+- Đọc cảm biến ánh sáng ngoài ở P0.
+- Đọc cảm biến độ ẩm đất ở P1 và hiệu chuẩn theo mốc khô/ướt.
+- Đọc cảm biến khoảng cách ở P14/P15, quy đổi thành phần trăm mực nước.
+- Điều khiển bơm nước và một tải dự phòng qua công tắc USB hai kênh P3/P6.
+- Điều khiển quạt mini bằng cặp chân P10/P13.
 - Điều khiển relay mini ở P2 cho LED/tải thử điện áp thấp.
 - Giao tiếp với Python IoT Gateway qua USB Serial, mỗi gói là một dòng JSON.
 
@@ -24,7 +24,15 @@ dht20.py
 sensors.py
 actuators.py
 protocol.py
+lcd1602.py
 ```
+
+### Cau hinh LCD1602
+
+Firmware hien thi luan phien nhiet do, do am, do am dat, anh sang va muc nuoc.
+LCD OhStem mac dinh dung dia chi I2C `0x21`. Doi `LCD_I2C_ADDRESS` trong
+`config.py` neu module dung dia chi khac, hoac dat `USE_LCD = False` neu khong
+lap LCD. Neu LCD mat ket noi, firmware van tiep tuc gui du lieu cam bien.
 
 Tải file HEX và chép vào ổ `MICROBIT`. Sau khi khởi động, bo hiển thị dấu chọn và gửi dữ liệu mỗi 5 giây.
 
@@ -34,13 +42,13 @@ Tải file HEX và chép vào ổ `MICROBIT`. Sau khi khởi động, bo hiển 
 |---|---|
 | DHT20 | I2C1 hoặc I2C2 |
 | LCD 16x2 (tùy chọn) | Cổng I2C còn lại |
-| Cảm biến độ ẩm đất | P0 |
-| Cảm biến ánh sáng | P1 |
+| Cảm biến ánh sáng | P0 |
+| Cảm biến độ ẩm đất | P1 |
 | Relay mini/đèn thử | P2 |
-| Cảm biến khoảng cách | P10/P13 |
-| Công tắc USB kênh 1 – bơm nước | P14 |
-| Công tắc USB kênh 2 – tải dự phòng | P15 |
-| Quạt mini | P16/P12 |
+| Quạt mini | P10/P13 |
+| Cảm biến khoảng cách | P14/P15 |
+| Công tắc USB OUTPUT1 – bơm nước | P3 |
+| Công tắc USB OUTPUT2 – tải dự phòng | P6 |
 
 Không cắm một thiết bị đồng thời vào hai cổng. I2C1 và I2C2 dùng chung bus P19/P20 nên DHT20 và LCD có thể hoạt động cùng lúc nếu địa chỉ không trùng.
 

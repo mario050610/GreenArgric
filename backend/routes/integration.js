@@ -1,9 +1,18 @@
 import { Router } from 'express';
 import { allowRoles } from '../middleware/auth.js';
-import { getMqttStatus } from '../mqtt.js';
+import { getMqttStatus, publishLcdSelection } from '../mqtt.js';
 import { config } from '../config.js';
 
 const router = Router();
+const lcdSensors = ['auto', 'light', 'motion'];
+
+router.post('/lcd', allowRoles('admin', 'owner', 'technician'), (req, res) => {
+  const sensor = String(req.body.sensor || 'auto');
+  if (!lcdSensors.includes(sensor)) return res.status(400).json({ message: 'Cảm biến LCD không hợp lệ' });
+  const result = publishLcdSelection(Number(req.body.area_id || 1), sensor);
+  if (!result.sent) return res.status(503).json({ message: 'MQTT chưa kết nối', mqtt: result });
+  return res.json({ message: 'Đã gửi lựa chọn đến LCD', mqtt: result });
+});
 
 router.get('/status', allowRoles('admin', 'owner', 'technician'), (req, res) => {
   const mqtt = getMqttStatus();

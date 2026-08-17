@@ -1,23 +1,27 @@
-from microbit import uart
+import sys
 import ujson
+import uselect
 
-_buffer = b''
+_buffer = ''
+_poll = uselect.poll()
+_poll.register(sys.stdin, uselect.POLLIN)
 
 
 def send(payload):
-    uart.write(ujson.dumps(payload) + '\n')
+    sys.stdout.write(ujson.dumps(payload) + '\n')
 
 
 def receive():
     global _buffer
-    while uart.any():
-        chunk = uart.read()
-        if chunk:
-            _buffer += chunk
-    if b'\n' not in _buffer:
+    while _poll.poll(0):
+        chunk = sys.stdin.read(1)
+        if not chunk:
+            break
+        _buffer += chunk
+    if '\n' not in _buffer:
         return None
-    line, _buffer = _buffer.split(b'\n', 1)
+    line, _buffer = _buffer.split('\n', 1)
     try:
-        return ujson.loads(line.decode('utf-8').strip())
-    except (ValueError, UnicodeError):
+        return ujson.loads(line.strip())
+    except ValueError:
         return None

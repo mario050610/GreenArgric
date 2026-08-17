@@ -1325,6 +1325,13 @@ function DevicesScreen({ role }: { role: Role }) {
 // Owner: device control with ON/OFF toggles grouped by zone
 function DeviceControlView() {
   const [devices, setDevices] = useState(DEVICES_INIT);
+  const [sensors, setSensors] = useState<any[]>([]);
+  const [autoOff, setAutoOff] = useState<Record<number, number>>({});
+  const [deadlines, setDeadlines] = useState<Record<number, number>>({});
+  const [apiError, setApiError] = useState("");
+  const [lcdSelection, setLcdSelection] = useState("auto");
+  const [lcdNotice, setLcdNotice] = useState("");
+  const [now, setNow] = useState(Date.now());
   const [statusFilter, setStatusFilter] = useState<"all" | "on" | "off">("all");
   const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:3000";
   const apiHeaders = () => ({ "content-type": "application/json", authorization: `Bearer ${localStorage.getItem("greenArgricToken")}` });
@@ -1336,15 +1343,62 @@ function DeviceControlView() {
       const existing = DEVICES_INIT.find(item => item.name === device.device_name && item.zone === device.area_name);
       const type = device.device_type === "grow_light" ? "light" : device.device_type === "fan" ? "fan" : device.device_type === "dosing_pump" ? "dosing" : "pump";
       return { id: device.device_id, name: device.device_name, zone: device.area_name || "Chưa phân khu", type, on: device.status === "ON", mode: String(device.mode || "MANUAL").toLowerCase(), watt: existing?.watt ?? 0, lastRun: device.last_seen ? new Date(device.last_seen).toLocaleString("vi-VN") : "Chưa ghi nhận" };
-    }))).catch(() => setDevices([]));
+    }))).catch(error => setApiError(error.message || "Backend chưa kết nối"));
+  }, []);
+  useEffect(() => {
+    const load = () => {
+      Promise.all([
+        fetch(`${apiUrl}/sensor/area/1/latest`, { headers: apiHeaders() }),
+        fetch(`${apiUrl}/device`, { headers: apiHeaders() }),
+      ]).then(async ([sensorResponse, deviceResponse]) => {
+          if (!sensorResponse.ok) throw new Error((await sensorResponse.json()).message || "Không tải được cảm biến");
+          if (!deviceResponse.ok) throw new Error((await deviceResponse.json()).message || "Không tải được thiết bị");
+          return { sensorRows: await sensorResponse.json(), deviceRows: await deviceResponse.json() };
+        })
+        .then(({ sensorRows, deviceRows }) => {
+          const liveTypes = ["light", "motion"];
+          setSensors(sensorRows.filter((sensor: any) => liveTypes.includes(sensor.sensor_type) && sensor.value !== null));
+          setDevices(deviceRows.map((device: any) => {
+            const existing = DEVICES_INIT.find(item => item.name === device.device_name && item.zone === device.area_name);
+            const type = device.device_type === "grow_light" ? "light" : device.device_type === "fan" ? "fan" : device.device_type === "dosing_pump" ? "dosing" : "pump";
+            return { id: device.device_id, name: device.device_name, zone: device.area_name || "Chưa phân khu", type, on: device.status === "ON", mode: String(device.mode || "MANUAL").toLowerCase(), watt: existing?.watt ?? 0, lastRun: device.last_seen ? new Date(device.last_seen).toLocaleString("vi-VN") : "Chưa ghi nhận" };
+          }));
+          setApiError("");
+        })
+        .catch(error => setApiError(error.message || "Backend chưa kết nối"));
+    };
+    load();
+    const refresh = window.setInterval(load, 1000);
+    const clock = window.setInterval(() => setNow(Date.now()), 250);
+    return () => { window.clearInterval(refresh); window.clearInterval(clock); };
   }, []);
   const toggle = async (id: number) => {
     const current = devices.find(device => device.id === id);
     if (!current) return;
-    const response = await fetch(`${apiUrl}/device/override`, { method: "POST", headers: apiHeaders(), body: JSON.stringify({ device_id: id, state: current.on ? "OFF" : "ON", control_mode: "MANUAL" }) });
+    const seconds = current.on ? 0 : Math.max(0, Number(autoOff[id] || 0));
+    const response = await fetch(`${apiUrl}/device/override`, { method: "POST", headers: apiHeaders(), body: JSON.stringify({ device_id: id, state: current.on ? "OFF" : "ON", control_mode: "MANUAL", auto_off_seconds: seconds }) });
     const result = await response.json();
     if (!response.ok) return window.alert(result.message || "Không thể điều khiển thiết bị");
-    setDevices(rows => rows.map(device => device.id === id ? { ...device, on: result.device?.status === "ON", lastRun: "Vừa xong" } : device));
+    const requestedOn = !current.on;
+    setDevices(rows => rows.map(device => device.id === id ? { ...device, on: requestedOn, lastRun: "Vừa xong" } : device));
+    if (!current.on && seconds > 0) {
+      setDeadlines(values => ({ ...values, [id]: Date.now() + seconds * 1000 }));
+      window.setTimeout(() => {
+        setDevices(rows => rows.map(device => device.id === id ? { ...device, on: false, lastRun: "Vừa tự tắt" } : device));
+        setDeadlines(values => { const next = { ...values }; delete next[id]; return next; });
+      }, seconds * 1000 + 500);
+    } else {
+      setDeadlines(values => { const next = { ...values }; delete next[id]; return next; });
+    }
+  };
+  const showOnLcd = async (sensor = lcdSelection) => {
+    setLcdSelection(sensor);
+    const response = await fetch(`${apiUrl}/integration/lcd`, {
+      method: "POST", headers: apiHeaders(), body: JSON.stringify({ area_id: 1, sensor }),
+    });
+    const result = await response.json();
+    if (!response.ok) return window.alert(result.message || "Không gửi được lệnh LCD");
+    setLcdNotice(sensor === "auto" ? "LCD đang tự động luân phiên" : "LCD đang hiển thị riêng cảm biến đã chọn");
   };
   const typeIcon: Record<string, any> = { pump: Droplets, light: Sun, fan: Wind, dosing: Zap };
   const modeStyle: Record<string, { bg: string; color: string; label: string }> = {
@@ -1358,6 +1412,28 @@ function DeviceControlView() {
 
   return (
     <div className="space-y-5">
+      {apiError && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">Không kết nối được backend: {apiError}</div>}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <div className="font-semibold text-gray-800">Cảm biến trực tiếp Khu A</div>
+          <div className="flex items-center gap-2">
+            <select value={lcdSelection} onChange={event => setLcdSelection(event.target.value)} className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm">
+              <option value="auto">Tự động luân phiên</option>
+              <option value="light">Ánh sáng P0</option>
+              <option value="motion">Trạng thái chuyển động</option>
+            </select>
+            <button onClick={() => showOnLcd()} className="rounded-xl bg-green-700 px-4 py-2 text-sm font-semibold text-white">Hiển thị trên LCD</button>
+          </div>
+        </div>
+        {lcdNotice && <div className="mb-3 rounded-xl bg-green-50 px-3 py-2 text-xs font-semibold text-green-700">{lcdNotice}</div>}
+        <div className="grid grid-cols-4 gap-3">
+          {sensors.map(sensor => <div key={sensor.sensor_id} className="bg-white rounded-2xl p-4 shadow-sm">
+            <div className="flex justify-between text-xs text-gray-500"><span>{({ light: "Cường độ ánh sáng", motion: "Trạng thái chuyển động" } as Record<string, string>)[sensor.sensor_type] || sensor.sensor_type}</span><span className="text-green-600 font-semibold">● LIVE</span></div>
+            <div className="text-2xl font-bold text-gray-800 mt-2">{sensor.sensor_type === "motion" ? (Number(sensor.value) ? "Có chuyển động" : "Không phát hiện") : sensor.value} <span className="text-sm font-normal text-gray-400">{sensor.unit}</span></div>
+            <button onClick={() => showOnLcd(sensor.sensor_type)} className="mt-3 w-full rounded-lg bg-green-700 px-3 py-1.5 text-xs font-semibold text-white">Hiển thị trên LCD</button>
+          </div>)}
+        </div>
+      </div>
       <div className="grid grid-cols-4 gap-4">
         {[
           { l: "Tổng thiết bị", v: devices.length, c: "#1F2937", bg: "white" },
@@ -1397,6 +1473,9 @@ function DeviceControlView() {
               </div>
               <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
                 <Toggle on={d.on} onChange={() => toggle(d.id)} />
+                <label className="mt-1 text-[10px] text-gray-500">Tự tắt (giây)</label>
+                <input type="number" min="0" max="86400" value={autoOff[d.id] ?? 0} onFocus={event => event.currentTarget.select()} onChange={event => setAutoOff(values => ({ ...values, [d.id]: Number(event.target.value) }))} className="w-24 rounded-lg border border-gray-200 px-2 py-1 text-xs" />
+                {deadlines[d.id] > now && <span className="text-[10px] font-semibold text-blue-600">Còn {Math.ceil((deadlines[d.id] - now) / 1000)} giây</span>}
                 <span className={`text-xs font-semibold ${d.on ? "text-green-600" : "text-gray-400"}`}>
                   {d.on ? "Đang bật" : "Đang tắt"}
                 </span>
@@ -5205,7 +5284,13 @@ function MessagesScreen({ initialContactId, onViewProfile }: { initialContactId?
     if (contact?.online) return "Đang hoạt động";
     if (!contact?.last_active_at) return "Chưa ghi nhận hoạt động";
     const minutes = Math.max(1, Math.floor((Date.now() - new Date(contact.last_active_at).getTime()) / 60000));
-    return `Hoạt động ${minutes} phút trước`;
+    if (minutes < 60) return `Hoạt động ${minutes} phút trước`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `Hoạt động ${hours} giờ trước`;
+    const days = Math.floor(hours / 24);
+    if (days < 7) return `Hoạt động ${days} ngày trước`;
+    const weeks = Math.floor(days / 7);
+    return `Hoạt động ${weeks} tuần trước`;
   };
   const changeMode = (next: "people" | "ai") => { setMode(next); if (next === "ai") { try { const saved = JSON.parse(localStorage.getItem(aiStorageKey) || "[]"); setItems(Array.isArray(saved) && saved.length ? saved : [aiGreeting]); } catch { setItems([aiGreeting]); } } else if (selected) void loadConversation(selected); };
   const clearConversation = async () => {
