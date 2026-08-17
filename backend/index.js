@@ -60,4 +60,24 @@ await hydrateStoreFromDatabase().catch((error) => {
   process.exitCode = 1;
 });
 startMqtt();
-app.listen(config.port, () => console.log(`GREEN ARGRIC API: http://localhost:${config.port} | Swagger: /api`));
+
+async function warmOllama() {
+  if (config.ai.provider !== 'ollama') return;
+  try {
+    const response = await fetch(`${config.ai.ollamaUrl}/api/generate`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ model: config.ai.ollamaModel, prompt: '', stream: false, keep_alive: '30m' }),
+      signal: AbortSignal.timeout(120_000),
+    });
+    if (!response.ok) throw new Error(`Ollama phản hồi ${response.status}`);
+    console.log(`[ai] ${config.ai.ollamaModel} đã sẵn sàng và được giữ trong bộ nhớ 30 phút`);
+  } catch (error) {
+    console.warn(`[ai] Chưa thể làm nóng ${config.ai.ollamaModel}: ${error.message}`);
+  }
+}
+
+app.listen(config.port, () => {
+  console.log(`GREEN ARGRIC API: http://localhost:${config.port} | Swagger: /api`);
+  void warmOllama();
+});
