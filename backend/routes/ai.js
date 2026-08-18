@@ -255,6 +255,8 @@ export function selectSourcesForQuestion(question, sources) {
 const foreignScriptPattern = /[\u0370-\u052F\u0590-\u0E7F\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uAC00-\uD7AF\uF900-\uFAFF]/u;
 const foreignScriptGlobalPattern = /[\u0370-\u052F\u0590-\u0E7F\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uAC00-\uD7AF\uF900-\uFAFF]/gu;
 const containsForeignScript = (value) => foreignScriptPattern.test(String(value || ''));
+const OLLAMA_KEEP_ALIVE = '30m';
+const OLLAMA_TIMEOUT_MS = 120_000;
 export const isPredominantlyEnglish = (value) => {
   const words = String(value || '').toLowerCase().match(/[a-z]+/g) || [];
   const englishMarkers = new Set(['the', 'is', 'are', 'of', 'to', 'and', 'in', 'for', 'with', 'from', 'that', 'this', 'when', 'which', 'can', 'will', 'has', 'have']);
@@ -266,7 +268,7 @@ export const isPredominantlyEnglish = (value) => {
 
 async function requestOllama(messages, verificationContext = {}) {
   const call = async (requestMessages) => {
-    const response = await fetch(`${config.ai.ollamaUrl}/api/chat`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: config.ai.ollamaModel, messages: requestMessages, stream: false, think: false, keep_alive: '5m', options: { temperature: 0.05, top_p: 0.8, repeat_penalty: 1.08, num_ctx: 4096, num_predict: 400 } }), signal: AbortSignal.timeout(70000) });
+    const response = await fetch(`${config.ai.ollamaUrl}/api/chat`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: config.ai.ollamaModel, messages: requestMessages, stream: false, think: false, keep_alive: OLLAMA_KEEP_ALIVE, options: { temperature: 0.05, top_p: 0.8, repeat_penalty: 1.08, num_ctx: 4096, num_predict: 400 } }), signal: AbortSignal.timeout(OLLAMA_TIMEOUT_MS) });
     const result = await response.json();
     return { response, result };
   };
@@ -313,14 +315,14 @@ async function requestSimpleGroundedAnswer(question, sources) {
       model: config.ai.ollamaModel,
       stream: false,
       think: false,
-      keep_alive: '5m',
+      keep_alive: OLLAMA_KEEP_ALIVE,
       options: { temperature: 0.1, top_p: 0.85, num_ctx: 4096 },
       messages: [
         { role: 'system', content: 'Trả lời trực tiếp bằng tiếng Việt, chỉ dùng dữ kiện trong nguồn. Phải sửa từ bị mất dấu trong dữ liệu trích xuất và viết đúng chính tả tiếng Việt theo ngữ cảnh. Không nhận xét nguồn, không đoán và không dùng Markdown.' },
         { role: 'user', content: `Câu hỏi: ${question}\n\nNguồn đã kiểm chứng:\n${sources.map((source) => `${source.title}\n${source.description}`).join('\n\n')}\n\nHãy trả lời đúng trọng tâm và đầy đủ. Nếu câu hỏi hỏi "khi nào", "điều kiện" hoặc phân loại trường hợp, phải nêu điều kiện cần và đủ, không bỏ sót biến số hay trường hợp biên; nêu ngắn gọn các trường hợp đối lập liên quan để kiểm tra kết luận. Nếu là công thức, chỉ dùng nguồn đầu tiên; trình bày đủ Nguyên liệu, Sơ chế và Các bước thực hiện theo đúng thứ tự của bài; không tự thêm định lượng hoặc thao tác.` },
       ],
     }),
-    signal: AbortSignal.timeout(60000),
+    signal: AbortSignal.timeout(OLLAMA_TIMEOUT_MS),
   });
   const result = await response.json();
   return response.ok ? String(result.message?.content || '').trim() : '';
@@ -341,14 +343,14 @@ async function requestCompleteGroundedAnswer(question, sources) {
       model: config.ai.ollamaModel,
       stream: false,
       think: false,
-      keep_alive: '5m',
+      keep_alive: OLLAMA_KEEP_ALIVE,
       options: { temperature: 0.05, top_p: 0.8, num_ctx: 4096, num_predict: 400 },
       messages: [
         { role: 'system', content: 'Bạn là chuyên gia tổng hợp câu trả lời có kiểm chứng. Chỉ dùng nguồn được cung cấp. Không được bỏ sót giả thiết, biến số, điều kiện cần, điều kiện đủ hoặc trường hợp biên làm thay đổi kết luận. Không xuất suy luận nội bộ, lời khen hay nhận xét nguồn.' },
         { role: 'user', content: `Câu hỏi: ${question}\n\nNguồn:\n${sources.map((source) => `${source.title}\n${source.description}`).join('\n\n')}\n\nHãy trả lời bằng tiếng Việt theo đúng ba phần sau:\nKết quả: trả lời chính xác câu hỏi.\nGiải thích: giải thích vì sao dựa trên nguồn.\nCác trường hợp liên quan: liệt kê các trường hợp đối lập hoặc trường hợp biên trực tiếp để chứng minh kết luận là đầy đủ.\nNếu nguồn không đủ cho một phần, ghi rõ phần đó chưa đủ nguồn; tuyệt đối không tự đoán.` },
       ],
     }),
-    signal: AbortSignal.timeout(60000),
+    signal: AbortSignal.timeout(OLLAMA_TIMEOUT_MS),
   });
   const result = await response.json();
   return response.ok ? formatPlainAnswer(result.message?.content || '') : '';
@@ -358,6 +360,13 @@ const formatPlainAnswer = (answer) => String(answer || '').normalize('NFC')
   .replace(/\*\*(.*?)\*\*/g, '$1')
   .replace(/\$([^$\n]+)\$/g, '$1')
   .replace(/`([^`]+)`/g, '$1')
+  .replace(/\\(?:d?frac)\{([^{}]+)\}\{([^{}]+)\}/g, '$1/$2')
+  .replace(/\\boxed\{([^{}]+)\}/g, '$1')
+  .replace(/\\sqrt\{([^{}]+)\}/g, '√($1)')
+  .replace(/\^\{([^{}]+)\}/g, '^$1')
+  .replace(/\\(?:left|right)([()[\]{}|])/g, '$1')
+  .replace(/\\(?:times|cdot)/g, '×')
+  .replace(/\\(?:\[|\]|\(|\))/g, '')
   .replace(/(?:Các bước này được thực hiện )?(?:dựa trên|theo) (?:hướng dẫn từ )?nguồn:\s*https?:\/\/\S+\.?/giu, '')
   .replace(/^\s*\*\s+/gm, '- ')
   .replace(/^\s*#{1,6}\s+/gm, '')
@@ -904,7 +913,16 @@ verifiedWebSources: ${JSON.stringify(webSources)}`;
     const usingOllama = config.ai.provider === 'ollama';
     const verifiedSummary = webSources.find((source) => source.summary)?.summary;
     if (verifiedSummary && !isPredominantlyEnglish(verifiedSummary)) return res.json({ reply: appendVerifiedSources(weatherQuestion ? formatWeatherAnswer(verifiedSummary) : verifiedSummary, webSources), provider: 'tavily', source: 'verified-web-fallback', sources: webSources });
-    return res.status(503).json({ message: usingOllama ? 'Không kết nối được Ollama. Hãy chạy ollama serve và tải model đã cấu hình.' : 'Không kết nối được OpenAI.', code: usingOllama ? 'OLLAMA_UNAVAILABLE' : 'OPENAI_UNAVAILABLE', detail: error.message });
+    const timedOut = error?.name === 'TimeoutError' || /timeout|aborted/i.test(String(error?.message || ''));
+    return res.status(503).json({
+      message: usingOllama
+        ? timedOut
+          ? 'Qwen đang mất nhiều thời gian để phản hồi. Model có thể đang được nạp vào bộ nhớ; vui lòng thử lại sau ít phút.'
+          : 'Không kết nối được Ollama. Hãy kiểm tra container Ollama và model đã cấu hình.'
+        : 'Không kết nối được OpenAI.',
+      code: usingOllama ? (timedOut ? 'OLLAMA_TIMEOUT' : 'OLLAMA_UNAVAILABLE') : 'OPENAI_UNAVAILABLE',
+      detail: error.message,
+    });
   }
 });
 
